@@ -1,0 +1,18 @@
+# Godot 4+ specific ignores
+.godot/
+/android/build/
+/android/.build_version
+
+# Firebase config (eklenirse) — herkese açık depoya konmasın
+/google-services.json
+
+# Build outputs
+*.apk
+*.aab
+*.idsig
+*.ipa
+export/
+
+# OS junk
+.DS_Store
+Thumbs.db
