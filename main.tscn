@@ -75,15 +75,26 @@ node_b = NodePath("../Beam")
 
 [node name="UI" type="CanvasLayer" parent="." unique_id=1415206752]
 
-[node name="HintLabel" type="Label" parent="UI" unique_id=607473242]
+[node name="LevelLabel" type="Label" parent="UI" unique_id=1302277419]
 anchors_preset = 10
 anchor_right = 1.0
 offset_top = 40.0
 offset_bottom = 76.0
 grow_horizontal = 2
-theme_override_colors/font_color = Color(1, 1, 1, 0.55)
-theme_override_font_sizes/font_size = 24
-text = "Sol / sağ ekrana dokun"
+theme_override_colors/font_color = Color(1, 0.86, 0.45, 1)
+theme_override_font_sizes/font_size = 26
+text = "SEVİYE 1"
+horizontal_alignment = 1
+
+[node name="HintLabel" type="Label" parent="UI" unique_id=607473242]
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 165.0
+offset_bottom = 201.0
+grow_horizontal = 2
+theme_override_colors/font_color = Color(1, 1, 1, 0.75)
+theme_override_font_sizes/font_size = 26
+text = "Sürükle, bırakınca düşer"
 horizontal_alignment = 1
 
 [node name="ScoreLabel" type="Label" parent="UI" unique_id=283035271]

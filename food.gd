@@ -1,47 +1,117 @@
+class_name Food
 extends RigidBody2D
 
-# Düşen yiyecek. Fizik çarpışma şekli her zaman basit bir daire (kararlılık
-# için) — görsel farklı olabilir. main.gd bunu freeze=true olarak spawn eder,
-# script ile düz aşağı indirir; LandingTrigger'a girince freeze=false yapar.
+# Düşen yiyecek. Her türün yandan görünen silueti aynı zamanda çarpışma şekli:
+# düz olanlar rahat istiflenir, yuvarlaklar gerçekten yuvarlanır. Zorluk,
+# hangi yiyeceğin ne sıklıkla geldiğinden doğar (main.gd -> _pick_kind).
 
-enum Kind { APPLE, WATERMELON, PIZZA }
+enum Kind { SANDWICH, CHEESE, TOAST, PIZZA, WATERMELON, APPLE }
 
-var kind: int = Kind.APPLE
-var radius: float = 16.0
+const DATA := {
+	Kind.SANDWICH:   {"mass": 1.0, "friction": 0.9},
+	Kind.CHEESE:     {"mass": 0.8, "friction": 0.85},
+	Kind.TOAST:      {"mass": 0.6, "friction": 0.8},
+	Kind.PIZZA:      {"mass": 0.7, "friction": 0.8},
+	Kind.WATERMELON: {"mass": 1.8, "friction": 0.8},   # en ağır, düz tabanlı yarım
+	Kind.APPLE:      {"mass": 0.45, "friction": 0.5},  # yuvarlanır
+}
+const APPLE_RADIUS := 16.0
+
+var kind: int = Kind.SANDWICH
+var shape: Shape2D
+var half_w := 0.0
+var half_h := 0.0
+var _poly := PackedVector2Array()
+
+func setup(k: int) -> void:
+	kind = k
+	mass = DATA[k]["mass"]
+	var mat := PhysicsMaterial.new()
+	mat.friction = DATA[k]["friction"]
+	mat.bounce = 0.02
+	physics_material_override = mat
+
+	if k == Kind.APPLE:
+		# Godot'da yuvarlanma direnci yok; dönüş sönümü olmadan elma kirişin
+		# ucuna kadar durmadan yuvarlanıyordu. Hâlâ yuvarlanır ama bir süre sonra durur.
+		angular_damp = 3.0
+		var c := CircleShape2D.new()
+		c.radius = APPLE_RADIUS
+		shape = c
+		half_w = APPLE_RADIUS
+		half_h = APPLE_RADIUS
+	else:
+		_poly = _polygon_for(k)
+		var cps := ConvexPolygonShape2D.new()
+		cps.points = _poly
+		shape = cps
+		for p in _poly:
+			half_w = maxf(half_w, absf(p.x))
+			half_h = maxf(half_h, absf(p.y))
+
+	var cs := CollisionShape2D.new()
+	cs.shape = shape
+	add_child(cs)
+	queue_redraw()
+
+static func _polygon_for(k: int) -> PackedVector2Array:
+	match k:
+		Kind.SANDWICH:   # köşeleri kırpılmış yassı dikdörtgen, 76x34
+			return PackedVector2Array([
+				Vector2(-38, -11), Vector2(-35, -17), Vector2(35, -17), Vector2(38, -11),
+				Vector2(38, 13), Vector2(35, 17), Vector2(-35, 17), Vector2(-38, 13)])
+		Kind.CHEESE:     # peynir kalıbı, 56x32
+			return PackedVector2Array([
+				Vector2(-28, -13), Vector2(-25, -16), Vector2(25, -16), Vector2(28, -13),
+				Vector2(28, 16), Vector2(-28, 16)])
+		Kind.TOAST:      # klasik tost dilimi silueti, 56x54 (dışbükey olmalı — fizik motoru şartı)
+			return PackedVector2Array([
+				Vector2(-24, 27), Vector2(24, 27), Vector2(28, -12), Vector2(22, -24),
+				Vector2(10, -27), Vector2(-10, -27), Vector2(-22, -24), Vector2(-28, -12)])
+		Kind.PIZZA:      # ucu yukarıda dilim, tabanı düz — üstüne koymak zor
+			return PackedVector2Array([Vector2(-32, 20), Vector2(32, 20), Vector2(0, -30)])
+		Kind.WATERMELON: # kesik yüzü altta yarım karpuz (kubbe), 68x34
+			var pts := PackedVector2Array()
+			for i in 11:
+				var a := PI * float(i) / 10.0
+				pts.append(Vector2(34.0 * cos(a), 17.0 - 34.0 * sin(a)))
+			return pts
+	return PackedVector2Array()
 
 func _draw() -> void:
 	match kind:
-		Kind.APPLE:
-			_draw_apple()
-		Kind.WATERMELON:
-			_draw_watermelon()
+		Kind.SANDWICH:
+			draw_colored_polygon(_poly, Color(0.80, 0.58, 0.30))
+			draw_rect(Rect2(-35, -16, 70, 9), Color(0.93, 0.76, 0.48))   # üst ekmek
+			draw_rect(Rect2(-37, -7, 74, 6), Color(0.45, 0.75, 0.30))    # marul
+			draw_rect(Rect2(-35, -1, 70, 5), Color(0.88, 0.28, 0.25))    # domates
+			draw_rect(Rect2(-36, 4, 72, 4), Color(0.98, 0.82, 0.30))     # peynir
+			draw_rect(Rect2(-35, 8, 70, 8), Color(0.93, 0.76, 0.48))     # alt ekmek
+		Kind.CHEESE:
+			draw_colored_polygon(_poly, Color(0.98, 0.80, 0.30))
+			for h in [[Vector2(-14, -3), 5.0], [Vector2(8, 6), 6.0], [Vector2(15, -8), 3.5], [Vector2(-5, 10), 3.0]]:
+				draw_circle(h[0], h[1], Color(0.90, 0.66, 0.18))
+		Kind.TOAST:
+			draw_colored_polygon(_poly, Color(0.72, 0.46, 0.22))           # kabuk
+			var inner := PackedVector2Array()
+			for p in _poly:
+				inner.append(p * 0.8 + Vector2(0, 1))
+			draw_colored_polygon(inner, Color(0.96, 0.84, 0.60))
 		Kind.PIZZA:
-			_draw_pizza()
-
-func _draw_apple() -> void:
-	draw_circle(Vector2.ZERO, radius, Color(0.86, 0.22, 0.21))
-	draw_circle(Vector2(-radius * 0.3, -radius * 0.35), radius * 0.28, Color(1, 1, 1, 0.25))
-	draw_rect(Rect2(-2, -radius - 6, 4, 8), Color(0.42, 0.28, 0.16))
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(2, -radius - 4), Vector2(14, -radius - 10), Vector2(10, -radius + 2)
-	]), Color(0.30, 0.62, 0.28))
-
-func _draw_watermelon() -> void:
-	var rind := PackedVector2Array([
-		Vector2(0, -radius), Vector2(radius * 0.95, radius * 0.7), Vector2(-radius * 0.95, radius * 0.7)
-	])
-	draw_colored_polygon(rind, Color(0.20, 0.55, 0.24))
-	var inner := PackedVector2Array([
-		Vector2(0, -radius * 0.72), Vector2(radius * 0.72, radius * 0.62), Vector2(-radius * 0.72, radius * 0.62)
-	])
-	draw_colored_polygon(inner, Color(0.88, 0.24, 0.28))
-	for pt in [Vector2(-8, 4), Vector2(4, 10), Vector2(10, -2), Vector2(-2, 14)]:
-		draw_circle(pt, 1.6, Color(0.1, 0.1, 0.08))
-
-func _draw_pizza() -> void:
-	var p := PackedVector2Array([
-		Vector2(0, -radius), Vector2(radius * 0.95, radius * 0.7), Vector2(-radius * 0.95, radius * 0.7)
-	])
-	draw_colored_polygon(p, Color(0.93, 0.76, 0.42))
-	for pt in [Vector2(-6, -2), Vector2(6, 6), Vector2(0, 14), Vector2(10, -8)]:
-		draw_circle(pt, 3.2, Color(0.82, 0.24, 0.2))
+			draw_colored_polygon(_poly, Color(0.98, 0.80, 0.36))
+			draw_rect(Rect2(-32, 13, 64, 7), Color(0.80, 0.55, 0.28))      # kenar hamuru
+			for pt in [Vector2(-10, 4), Vector2(9, 2), Vector2(0, -12)]:
+				draw_circle(pt, 5.0, Color(0.82, 0.24, 0.20))              # sucuk
+		Kind.WATERMELON:
+			draw_colored_polygon(_poly, Color(0.18, 0.50, 0.22))           # kabuk
+			for sx in [-18.0, 0.0, 18.0]:
+				draw_line(Vector2(sx * 0.9, -14.0 + absf(sx) * 0.45), Vector2(sx, 10), Color(0.12, 0.36, 0.15), 3.0)
+			draw_rect(Rect2(-33, 11, 66, 2), Color(0.93, 0.95, 0.85))      # beyaz iç kabuk
+			draw_rect(Rect2(-33, 13, 66, 4), Color(0.90, 0.30, 0.32))      # kesik kırmızı yüz
+		Kind.APPLE:
+			draw_circle(Vector2.ZERO, APPLE_RADIUS, Color(0.86, 0.22, 0.21))
+			draw_circle(Vector2(-4.8, -5.6), APPLE_RADIUS * 0.28, Color(1, 1, 1, 0.25))
+			draw_rect(Rect2(-2, -APPLE_RADIUS - 6, 4, 8), Color(0.42, 0.28, 0.16))
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(2, -APPLE_RADIUS - 4), Vector2(14, -APPLE_RADIUS - 10), Vector2(10, -APPLE_RADIUS + 2)
+			]), Color(0.30, 0.62, 0.28))
