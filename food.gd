@@ -26,6 +26,9 @@ var _poly := PackedVector2Array()
 func setup(k: int) -> void:
 	kind = k
 	mass = DATA[k]["mass"]
+	# Hızlı düşen/savrulan parça ince kirişi (28 px) iki fizik adımı arasında
+	# "atlayıp" içinden geçebiliyordu (tünelleme) — sürekli çarpışma algılaması.
+	continuous_cd = RigidBody2D.CCD_MODE_CAST_SHAPE
 	var mat := PhysicsMaterial.new()
 	mat.friction = DATA[k]["friction"]
 	mat.bounce = 0.02
@@ -79,39 +82,45 @@ static func _polygon_for(k: int) -> PackedVector2Array:
 	return PackedVector2Array()
 
 func _draw() -> void:
-	match kind:
+	paint(self, kind)
+
+# Yiyeceğin görseli; HUD'daki küçük ilerleme simgeleri de bunu kullanır
+# (çağıran draw_set_transform ile ölçekler).
+static func paint(ci: CanvasItem, k: int) -> void:
+	var pts := _polygon_for(k)
+	match k:
 		Kind.SANDWICH:
-			draw_colored_polygon(_poly, Color(0.80, 0.58, 0.30))
-			draw_rect(Rect2(-35, -16, 70, 9), Color(0.93, 0.76, 0.48))   # üst ekmek
-			draw_rect(Rect2(-37, -7, 74, 6), Color(0.45, 0.75, 0.30))    # marul
-			draw_rect(Rect2(-35, -1, 70, 5), Color(0.88, 0.28, 0.25))    # domates
-			draw_rect(Rect2(-36, 4, 72, 4), Color(0.98, 0.82, 0.30))     # peynir
-			draw_rect(Rect2(-35, 8, 70, 8), Color(0.93, 0.76, 0.48))     # alt ekmek
+			ci.draw_colored_polygon(pts, Color(0.80, 0.58, 0.30))
+			ci.draw_rect(Rect2(-35, -16, 70, 9), Color(0.93, 0.76, 0.48))   # üst ekmek
+			ci.draw_rect(Rect2(-37, -7, 74, 6), Color(0.45, 0.75, 0.30))    # marul
+			ci.draw_rect(Rect2(-35, -1, 70, 5), Color(0.88, 0.28, 0.25))    # domates
+			ci.draw_rect(Rect2(-36, 4, 72, 4), Color(0.98, 0.82, 0.30))     # peynir
+			ci.draw_rect(Rect2(-35, 8, 70, 8), Color(0.93, 0.76, 0.48))     # alt ekmek
 		Kind.CHEESE:
-			draw_colored_polygon(_poly, Color(0.98, 0.80, 0.30))
+			ci.draw_colored_polygon(pts, Color(0.98, 0.80, 0.30))
 			for h in [[Vector2(-14, -3), 5.0], [Vector2(8, 6), 6.0], [Vector2(15, -8), 3.5], [Vector2(-5, 10), 3.0]]:
-				draw_circle(h[0], h[1], Color(0.90, 0.66, 0.18))
+				ci.draw_circle(h[0], h[1], Color(0.90, 0.66, 0.18))
 		Kind.TOAST:
-			draw_colored_polygon(_poly, Color(0.72, 0.46, 0.22))           # kabuk
+			ci.draw_colored_polygon(pts, Color(0.72, 0.46, 0.22))           # kabuk
 			var inner := PackedVector2Array()
-			for p in _poly:
+			for p in pts:
 				inner.append(p * 0.8 + Vector2(0, 1))
-			draw_colored_polygon(inner, Color(0.96, 0.84, 0.60))
+			ci.draw_colored_polygon(inner, Color(0.96, 0.84, 0.60))
 		Kind.PIZZA:
-			draw_colored_polygon(_poly, Color(0.98, 0.80, 0.36))
-			draw_rect(Rect2(-32, 13, 64, 7), Color(0.80, 0.55, 0.28))      # kenar hamuru
+			ci.draw_colored_polygon(pts, Color(0.98, 0.80, 0.36))
+			ci.draw_rect(Rect2(-32, 13, 64, 7), Color(0.80, 0.55, 0.28))      # kenar hamuru
 			for pt in [Vector2(-10, 4), Vector2(9, 2), Vector2(0, -12)]:
-				draw_circle(pt, 5.0, Color(0.82, 0.24, 0.20))              # sucuk
+				ci.draw_circle(pt, 5.0, Color(0.82, 0.24, 0.20))              # sucuk
 		Kind.WATERMELON:
-			draw_colored_polygon(_poly, Color(0.18, 0.50, 0.22))           # kabuk
+			ci.draw_colored_polygon(pts, Color(0.18, 0.50, 0.22))           # kabuk
 			for sx in [-18.0, 0.0, 18.0]:
-				draw_line(Vector2(sx * 0.9, -14.0 + absf(sx) * 0.45), Vector2(sx, 10), Color(0.12, 0.36, 0.15), 3.0)
-			draw_rect(Rect2(-33, 11, 66, 2), Color(0.93, 0.95, 0.85))      # beyaz iç kabuk
-			draw_rect(Rect2(-33, 13, 66, 4), Color(0.90, 0.30, 0.32))      # kesik kırmızı yüz
+				ci.draw_line(Vector2(sx * 0.9, -14.0 + absf(sx) * 0.45), Vector2(sx, 10), Color(0.12, 0.36, 0.15), 3.0)
+			ci.draw_rect(Rect2(-33, 11, 66, 2), Color(0.93, 0.95, 0.85))      # beyaz iç kabuk
+			ci.draw_rect(Rect2(-33, 13, 66, 4), Color(0.90, 0.30, 0.32))      # kesik kırmızı yüz
 		Kind.APPLE:
-			draw_circle(Vector2.ZERO, APPLE_RADIUS, Color(0.86, 0.22, 0.21))
-			draw_circle(Vector2(-4.8, -5.6), APPLE_RADIUS * 0.28, Color(1, 1, 1, 0.25))
-			draw_rect(Rect2(-2, -APPLE_RADIUS - 6, 4, 8), Color(0.42, 0.28, 0.16))
-			draw_colored_polygon(PackedVector2Array([
+			ci.draw_circle(Vector2.ZERO, APPLE_RADIUS, Color(0.86, 0.22, 0.21))
+			ci.draw_circle(Vector2(-4.8, -5.6), APPLE_RADIUS * 0.28, Color(1, 1, 1, 0.25))
+			ci.draw_rect(Rect2(-2, -APPLE_RADIUS - 6, 4, 8), Color(0.42, 0.28, 0.16))
+			ci.draw_colored_polygon(PackedVector2Array([
 				Vector2(2, -APPLE_RADIUS - 4), Vector2(14, -APPLE_RADIUS - 10), Vector2(10, -APPLE_RADIUS + 2)
 			]), Color(0.30, 0.62, 0.28))

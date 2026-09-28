@@ -13,14 +13,14 @@ const W := Food.Kind.WATERMELON
 const A := Food.Kind.APPLE
 
 const HAND_MADE := [
-	{"foods": [S, S, S, S], "hint": "Sürükle, bırakınca düşer"},
-	{"foods": [S, C, S, C], "hint": "Pandanın kafasına düşürme!"},
-	{"foods": [S, C, T, S, C], "hint": "Yeni: Tost"},
-	{"foods": [S, C, P, S, C], "hint": "Yeni: Pizza — üstü sivri"},
+	{"foods": [S, S, S, S], "hint": "Drag and release to drop"},
+	{"foods": [S, C, S, C], "hint": "Don't drop it on the panda!"},
+	{"foods": [S, C, T, S, C], "hint": "New: Toast"},
+	{"foods": [S, C, P, S, C], "hint": "New: Pizza — sharp top!"},
 	{"foods": [S, P, C, T, P, S], "hint": ""},
-	{"foods": [S, C, W, T, S, C], "hint": "Yeni: Karpuz — çok ağır!"},
+	{"foods": [S, C, W, T, S, C], "hint": "New: Watermelon — very heavy!"},
 	{"foods": [S, W, C, P, T, W, S], "hint": ""},
-	{"foods": [S, C, A, T, S, C, S], "hint": "Yeni: Elma — yuvarlanır!"},
+	{"foods": [S, C, A, T, S, C, S], "hint": "New: Apple — it rolls!"},
 	{"foods": [S, P, W, C, A, T, S, C], "hint": ""},
 	{"foods": [S, W, P, A, C, T, W, P, S], "hint": ""},
 ]
@@ -51,3 +51,16 @@ static func _generated(level: int) -> Dictionary:
 		var from: Array = tough if rng.randf() < hard else easy
 		foods.append(from[rng.randi() % from.size()])
 	return {"foods": foods, "hint": "", "pool": easy + tough}
+
+# Bu seviyede ilk kez gelen yiyecek (giriş kartında gösterilir); yoksa -1.
+static func new_kind(level: int) -> int:
+	if level < 1 or level > HAND_MADE.size():
+		return -1
+	var seen := {}
+	for i in level - 1:
+		for k in HAND_MADE[i]["foods"]:
+			seen[k] = true
+	for k in HAND_MADE[level - 1]["foods"]:
+		if not seen.has(k):
+			return k
+	return -1

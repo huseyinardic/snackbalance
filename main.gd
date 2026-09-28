@@ -27,6 +27,9 @@ const SPAWN_DELAY := 0.55        # bir yiyecek yerleşince sıradakinin gecikmes
 const PANDA_HIT_HALF_WIDTH := 34.0  # pandanın yarı genişliği (beam_panda.gd gövdesi ±34)
 const MAX_PANDA_HITS := 2        # bu kadar vuruşta oyun biter
 const SAVE_PATH := "user://progress.cfg"
+const TILT_WARN_DEG := 22.0      # bu açıdan sonra kiriş kızarıp yanıp söner (limit TILT_LIMIT_DEG)
+const INTRO_SECONDS := 1.0       # yeni seviye giriş kartı; ilk yiyecek bundan sonra gelir
+const DEV_LONG_PRESS_MS := 600   # test sürümü: seviye başlığına uzun basış = önceki seviye
 
 enum Phase { PLAYING, HOLDING, WON, LOST }
 
@@ -35,11 +38,8 @@ enum Phase { PLAYING, HOLDING, WON, LOST }
 @onready var panda: Node2D = $Beam/Panda
 @onready var panda_zone: Area2D = $Beam/PandaZone
 @onready var food_container: Node2D = $FoodContainer
-@onready var level_label: Label = $UI/LevelLabel
-@onready var score_label: Label = $UI/ScoreLabel
-@onready var hint_label: Label = $UI/HintLabel
-@onready var tilt_label: Label = $UI/TiltLabel
-@onready var game_over_label: Label = $UI/GameOverLabel
+@onready var beam_visual: Control = $Beam/Visual
+var hud: LevelHud
 
 var level := 1
 var phase := Phase.PLAYING
@@ -56,6 +56,9 @@ var _active_touch_index := -1  # -1 = şu an hiçbir parmak aktif değil
 var _holding := false
 var _touch_x := 0.0
 var _guide: DropGuide
+var _t := 0.0
+var _dev_touch_index := -1       # test sürümü kısayolu için başlığa basan parmak
+var _dev_press_msec := 0
 
 # Bekleyen yiyeceğin nereye ineceğini gösteren kesikli çizgi; pandaya
 # denk geliyorsa kırmızı olur.
@@ -76,6 +79,12 @@ func _ready() -> void:
 	_guide = DropGuide.new()
 	add_child(_guide)
 	move_child(_guide, food_container.get_index())   # yiyeceklerin altında çizilsin
+	hud = LevelHud.new()
+	$UI.add_child(hud)
+	# Node2D altındaki ColorRect'in anchor'ı çözülmüyor, boyutu 0 kalıp gri
+	# varsayılan zemin görünüyordu — boyutu elle ver.
+	_fit_background()
+	get_viewport().size_changed.connect(_fit_background)
 	_start_level(_load_level())
 
 # Yerleşmiş bir parça sonradan eğimle kayıp pandaya ulaştıysa: yukarıdan
@@ -93,7 +102,14 @@ func _check_panda_zone() -> void:
 
 # --- seviye akışı ---
 
-func _start_level(n: int) -> void:
+func _fit_background() -> void:
+	var bg: ColorRect = $Background
+	bg.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	bg.position = Vector2.ZERO
+	bg.size = get_viewport_rect().size
+
+# retry = aynı seviyeyi tekrar deniyor (kısa giriş kartı, yeni yiyecek tanıtımı yok)
+func _start_level(n: int, retry: bool = false) -> void:
 	level = maxi(n, 1)
 	_save_level(level)
 	_level_data = Levels.get_level(level)
@@ -101,16 +117,20 @@ func _start_level(n: int) -> void:
 	_seq_index = 0
 	phase = Phase.PLAYING
 	panda_hits = 0
-	panda.set_hits(0)
+	panda.reset()
 	current_food = null
 	_dropping = false
-	_spawn_wait = 0.25
 	_set_guide(false)
-	game_over_label.visible = false
-	level_label.text = "SEVİYE %d" % level
-	hint_label.text = _level_data["hint"]
+	beam_visual.modulate = Color.WHITE
+	hud.setup_level(level, _level_data["foods"], _level_data["hint"])
+	var intro: float = 0.35 if retry else INTRO_SECONDS
+	hud.show_intro(level, "" if retry else _level_data["hint"], -1 if retry else Levels.new_kind(level), intro)
+	_spawn_wait = intro + 0.25
 
+	# remove_child: queue_free'lenen eski yiyecekler kare sonuna kadar çocuk olarak
+	# kalıp yeni seviyenin ilk karesinde "yerleşmiş" sayılabiliyordu.
 	for c in food_container.get_children():
+		food_container.remove_child(c)
 		c.queue_free()
 
 	# Not: beam.rotation/.position gibi doğrudan atamalar RigidBody2D'de tutmuyor
@@ -120,7 +140,6 @@ func _start_level(n: int) -> void:
 	PhysicsServer2D.body_set_state(rid, PhysicsServer2D.BODY_STATE_TRANSFORM, Transform2D(0.0, pivot.position))
 	PhysicsServer2D.body_set_state(rid, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY, Vector2.ZERO)
 	PhysicsServer2D.body_set_state(rid, PhysicsServer2D.BODY_STATE_ANGULAR_VELOCITY, 0.0)
-	score_label.text = "0 / %d" % _target()
 
 func _target() -> int:
 	return _level_data["foods"].size()
@@ -134,16 +153,25 @@ func _placed_count() -> int:
 			n += 1
 	return n
 
+# Kirişin açısı fizik motorundan okunur: seviye başında PhysicsServer2D ile
+# sıfırlanan kiriş, düğümde (beam.rotation) ancak sonraki fizik adımında
+# güncelleniyordu — kazandıktan sonra devrilen kirişle yeni seviye ilk karede
+# "Out of balance!" ile bitiyordu.
+func _beam_angle() -> float:
+	var xf: Transform2D = PhysicsServer2D.body_get_state(beam.get_rid(), PhysicsServer2D.BODY_STATE_TRANSFORM)
+	return xf.get_rotation()
+
 func _process(delta: float) -> void:
-	var deg := rad_to_deg(beam.rotation)
-	tilt_label.text = "eğim: %.1f°" % deg
+	var deg := rad_to_deg(_beam_angle())
+	_t += delta
 
 	if phase == Phase.WON or phase == Phase.LOST:
 		return
 
 	if abs(deg) >= TILT_LIMIT_DEG:
-		_lose("Devrildi!")
+		_lose("Out of balance!")
 		return
+	_update_tilt_warning(absf(deg))
 
 	_update_food(delta)
 	if phase == Phase.LOST:   # iniş pandaya ikinci vuruş olduysa
@@ -153,7 +181,7 @@ func _process(delta: float) -> void:
 	if phase == Phase.LOST:
 		return
 	var placed := _placed_count()
-	score_label.text = "%d / %d" % [mini(placed, _target()), _target()]
+	hud.set_progress(mini(placed, _target()))
 
 	if current_food == null:
 		if placed >= _target():
@@ -161,14 +189,14 @@ func _process(delta: float) -> void:
 				phase = Phase.HOLDING
 				_hold_left = HOLD_SECONDS
 			_hold_left -= delta
-			hint_label.text = "Dengede tut!  %d" % ceili(maxf(_hold_left, 0.0))
+			hud.show_hold(maxi(1, ceili(_hold_left)))
 			if _hold_left <= 0.0:
 				_win()
 		else:
 			if phase == Phase.HOLDING:
 				# beklerken bir yiyecek düştü ya da pandaya kaydı -> yerine yenisi gelir
 				phase = Phase.PLAYING
-				hint_label.text = _level_data["hint"]
+				hud.hide_hold()
 				_spawn_wait = SPAWN_DELAY
 			_spawn_wait -= delta
 			if _spawn_wait <= 0.0:
@@ -191,10 +219,11 @@ func _mark_lost_foods() -> void:
 func _win() -> void:
 	phase = Phase.WON
 	_set_guide(false)
-	hint_label.text = ""
 	_save_level(level + 1)
-	game_over_label.visible = true
-	game_over_label.text = "Seviye %d tamam!\n\nDokun, sonraki seviye" % level
+	beam_visual.modulate = Color.WHITE
+	hud.show_win(level)
+	panda.celebrate()
+	Input.vibrate_handheld(60)
 
 func _lose(reason: String) -> void:
 	phase = Phase.LOST
@@ -202,8 +231,19 @@ func _lose(reason: String) -> void:
 		current_food.queue_free()
 	current_food = null
 	_set_guide(false)
-	game_over_label.visible = true
-	game_over_label.text = "%s\n\nDokun, tekrar dene" % reason
+	hud.show_lose(reason)
+	Input.vibrate_handheld(80)
+
+# Kiriş kritik açıya yaklaştıkça kızarır ve giderek hızlanarak yanıp söner —
+# oyuncu devrilmeden önce "tehlike" hissini alsın.
+func _update_tilt_warning(abs_deg: float) -> void:
+	var k: float = clampf((abs_deg - TILT_WARN_DEG) / (TILT_LIMIT_DEG - TILT_WARN_DEG), 0.0, 1.0)
+	if k <= 0.0:
+		beam_visual.modulate = Color.WHITE
+		return
+	var pulse: float = 0.5 + 0.5 * sin(_t * lerpf(8.0, 20.0, k))
+	var r: float = k * (0.55 + 0.45 * pulse)
+	beam_visual.modulate = Color(1.0 + 0.3 * r, 1.0 - 0.7 * r, 1.0 - 0.7 * r)
 
 func _load_level() -> int:
 	var cfg := ConfigFile.new()
@@ -218,18 +258,29 @@ func _save_level(n: int) -> void:
 
 # --- yiyecek hareketi ---
 
-func _update_food(delta: float) -> void:
+# Bekleyen yiyecek parmağı izler (kare hızında, akıcı olsun diye _process'te).
+func _update_food(_delta: float) -> void:
 	var f := current_food
-	if f == null or not f.freeze:
+	if f == null or not f.freeze or not HOVER_DROP or _dropping:
 		_set_guide(false)
 		return
-	if HOVER_DROP and not _dropping:
-		if _holding:
-			f.position.x = _lane_x(_touch_x)
-		_update_guide(f)
+	if _holding:
+		f.position.x = _lane_x(_touch_x)
+	_update_guide(f)
+
+# Düşüş fizik adımlarında: kiriş ve düşen yiyecek aynı adımlarla ilerlesin.
+# _process'teyken yavaş karelerde (takılma, zayıf telefon) bir karede birkaç
+# fizik adımı geçip kiriş duran yiyeceğin içine dönüyordu; tarama da başlangıçta
+# iç içe olduğu cismi yok saydığı için yiyecek kirişin içinden geçiyordu.
+func _physics_process(delta: float) -> void:
+	if phase == Phase.WON or phase == Phase.LOST:
 		return
-	_set_guide(false)
+	var f := current_food
+	if f == null or not f.freeze:
+		return
 	if HOVER_DROP:
+		if not _dropping:
+			return
 		_drop_speed = minf(_drop_speed + DROP_ACCEL * delta, DROP_MAX_SPEED)
 		if _sweep(f, Vector2(0, _drop_speed * delta)):
 			_on_touchdown(f)
@@ -275,7 +326,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		match event.keycode:
 			KEY_N: _start_level(level + 1)
 			KEY_B: _start_level(level - 1)
-			KEY_R: _start_level(level)
+			KEY_R: _start_level(level, true)
+		return
+	if OS.is_debug_build() and _dev_shortcut(event):
 		return
 	if event is InputEventScreenTouch:
 		if event.pressed:
@@ -298,12 +351,37 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion and _holding:
 		_touch_x = event.position.x
 
+# Yalnız test (debug) sürümünde: seviye başlığına dokun = sonraki seviye,
+# uzun bas = önceki seviye, oyun sırasında ikinci parmak = seviyeyi yeniden başlat.
+# Release sürümde hiç çağrılmaz. true = olay kısayola gitti, oyun görmesin.
+func _dev_shortcut(event: InputEvent) -> bool:
+	if not event is InputEventScreenTouch:
+		return false
+	if event.pressed:
+		if _active_touch_index != -1 and event.index != _active_touch_index:
+			_holding = false
+			_active_touch_index = -1
+			_start_level(level, true)
+			return true
+		if event.position.y < 150.0 and _active_touch_index == -1:
+			_dev_touch_index = event.index
+			_dev_press_msec = Time.get_ticks_msec()
+			return true
+	elif event.index == _dev_touch_index:
+		_dev_touch_index = -1
+		if Time.get_ticks_msec() - _dev_press_msec >= DEV_LONG_PRESS_MS:
+			_start_level(level - 1)
+		else:
+			_start_level(level + 1)
+		return true
+	return false
+
 func _press(x: float) -> void:
 	if phase == Phase.WON:
 		_start_level(level + 1)
 		return
 	if phase == Phase.LOST:
-		_start_level(level)
+		_start_level(level, true)
 		return
 	_holding = true
 	_touch_x = x
@@ -363,6 +441,10 @@ func _shape_query(food: Food, xform: Transform2D, motion: Vector2) -> PhysicsSha
 # olmaz. Tek bir orta ışını geniş şekillerin kenarını kaçırıyordu. true = temas.
 func _sweep(food: Food, motion: Vector2) -> bool:
 	var space := get_world_2d().direct_space_state
+	# cast_motion başlangıçta iç içe olduğu cismi yok sayar: kiriş yiyeceğe
+	# değmiş/girmişse taramaya hiç başlama, temas say (hemen yerleşir).
+	if not space.intersect_shape(_shape_query(food, food.global_transform, Vector2.ZERO), 1).is_empty():
+		return true
 	var res := space.cast_motion(_shape_query(food, food.global_transform, motion))
 	var safe: float = res[0] if res.size() > 0 else 1.0
 	food.global_position += motion * safe
@@ -409,7 +491,7 @@ func _panda_hit(food: Food) -> void:
 	panda_hits += 1
 	panda.set_hits(panda_hits)
 	if panda_hits >= MAX_PANDA_HITS:
-		_lose("Kafasına düştü!")
+		_lose("Ouch! Poor panda!")
 
 func _land_food(body: Food) -> void:
 	if body.get_meta("landed", false):

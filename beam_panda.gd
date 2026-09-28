@@ -5,6 +5,20 @@ extends Node2D
 # orijininde (y=0) ki Beam üstüne konumlandırması kolay olsun.
 
 var hits := 0
+var happy := false   # seviye bitti: gözler mutlu kavis, küçük zıplama
+
+func celebrate() -> void:
+	happy = true
+	queue_redraw()
+	var t := create_tween()
+	for i in 3:
+		t.tween_property(self, "position:y", position.y - 12.0, 0.14).set_ease(Tween.EASE_OUT)
+		t.tween_property(self, "position:y", position.y, 0.16).set_ease(Tween.EASE_IN)
+
+func reset() -> void:
+	happy = false
+	hits = 0
+	queue_redraw()
 
 func set_hits(n: int) -> void:
 	hits = n
@@ -38,11 +52,16 @@ func _draw() -> void:
 		Vector2(8, -34), Vector2(24, -32), Vector2(24, -18), Vector2(8, -20)
 	]), patch_col)
 
-	# göz akı + bebek
-	draw_circle(Vector2(-15, -27), 5.0, Color.WHITE)
-	draw_circle(Vector2(15, -27), 5.0, Color.WHITE)
-	draw_circle(Vector2(-14, -26), 2.4, ink)
-	draw_circle(Vector2(16, -26), 2.4, ink)
+	# göz akı + bebek (mutluyken ^ ^ kavisleri)
+	if happy:
+		draw_arc(Vector2(-15, -24), 5.0, PI * 1.1, PI * 1.9, 10, Color.WHITE, 2.6, true)
+		draw_arc(Vector2(15, -24), 5.0, PI * 1.1, PI * 1.9, 10, Color.WHITE, 2.6, true)
+		draw_arc(Vector2(0, -8), 5.0, PI * 0.15, PI * 0.85, 10, ink, 2.2, true)   # gülümseme
+	else:
+		draw_circle(Vector2(-15, -27), 5.0, Color.WHITE)
+		draw_circle(Vector2(15, -27), 5.0, Color.WHITE)
+		draw_circle(Vector2(-14, -26), 2.4, ink)
+		draw_circle(Vector2(16, -26), 2.4, ink)
 
 	# burun
 	draw_circle(Vector2(0, -14), 3.5, ink)
