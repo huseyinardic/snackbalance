@@ -9,6 +9,7 @@ extends Control
 # Oyun mantığı main.gd'de; bu sadece gösterir.
 
 const GOLD := Color(1.0, 0.84, 0.35)
+const OUTLINE := Color(0.16, 0.24, 0.16, 0.8)
 const CONFETTI_COLORS := [Color(0.98, 0.36, 0.36), Color(1.0, 0.8, 0.25), Color(0.35, 0.8, 0.45),
 	Color(0.35, 0.6, 0.98), Color(0.9, 0.45, 0.9)]
 
@@ -31,6 +32,12 @@ var _confetti: CPUParticles2D
 var _placed := -1
 var _hold_shown := -1
 var _intro_tween: Tween
+var _swap: SwapButton
+var _swap_pulse: Tween
+var _lives: LivesView
+var _fly_heart: FlyingHeart
+var _fly_tween: Tween
+var _ad_offer: PanelContainer
 
 # Küçük yiyecek simgesi: yiyeceğin kendi çizimi (Food.paint) kutuya sığdırılır.
 class FoodIcon extends Control:
@@ -41,6 +48,115 @@ class FoodIcon extends Control:
 		var k := minf(size.x / 84.0, size.y / 66.0)
 		draw_set_transform(size / 2.0 + Vector2(0, 3.0 * k), 0.0, Vector2(k, k))
 		Food.paint(self, kind)
+
+# Pandanın canları (sol alt, Swap'ın simetriği): mini panda yüzü + kalpler.
+# Çarpınca pandanın başından kırık kalp buraya uçar, kalp çatlayıp sönük griye
+# döner; son kalp kırmızı nabız gibi atar ("dikkat, son hakkın").
+class LivesView extends Control:
+	var max_lives := 2
+	var lives := 2
+	var _t := 0.0
+	var _shake := 0.0
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func heart_center(i: int) -> Vector2:
+		return Vector2(84.0 + i * 50.0, size.y / 2.0)
+
+	func _process(delta: float) -> void:
+		_t += delta
+		_shake = maxf(0.0, _shake - delta * 30.0)
+		if lives == 1 or _shake > 0.0:
+			queue_redraw()
+
+	func shake() -> void:
+		_shake = 7.0
+
+	func _draw() -> void:
+		var off := Vector2(randf_range(-_shake, _shake), 0.0)
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.1, 0.2, 0.1, 0.28)
+		sb.set_corner_radius_all(int(size.y / 2.0))
+		draw_style_box(sb, Rect2(off, size))
+		_face(Vector2(36, size.y / 2.0) + off)
+		for i in max_lives:
+			var alive := i < lives
+			var s := 1.0
+			if alive and lives == 1:
+				s += 0.16 * (0.5 + 0.5 * sin(_t * 7.0))
+			LivesView.heart(self, heart_center(i) + off, 17.0 * s, alive)
+
+	func _face(c: Vector2) -> void:
+		var ink := Color(0.17, 0.14, 0.16)
+		for x in [-14.0, 14.0]:
+			draw_circle(c + Vector2(x, -15), 8.5, ink)
+		draw_circle(c, 21.0, ink)
+		draw_circle(c, 18.5, Color(0.99, 0.98, 0.96))
+		ArtUtil.ellipse(self, c + Vector2(-7.5, 0), 5.0, 7.0, 0.55, Color(0.19, 0.17, 0.2))
+		ArtUtil.ellipse(self, c + Vector2(7.5, 0), 5.0, 7.0, -0.55, Color(0.19, 0.17, 0.2))
+		for x in [-7.0, 7.0]:
+			draw_circle(c + Vector2(x, -1), 2.6, Color.WHITE)
+			draw_circle(c + Vector2(x, -0.5), 1.4, ink)
+		ArtUtil.ellipse(self, c + Vector2(0, 7), 2.6, 1.9, 0.0, ink)
+		if lives < max_lives:   # yara bandı
+			var bc := c + Vector2(6, -14)
+			ArtUtil.ellipse(self, bc, 7.5, 3.0, -0.5, Color(0.98, 0.82, 0.62))
+
+	# Kalp: iki daire + üçgen, koyu kontur; sönmüşse gri ve ortasından çatlak.
+	static func heart(ci: CanvasItem, c: Vector2, r: float, alive: bool) -> void:
+		var ink := Color(0.25, 0.12, 0.14, 0.9)
+		var col := Color(0.96, 0.28, 0.34) if alive else Color(0.62, 0.62, 0.64, 0.75)
+		for layer in 2:
+			var k := r + (3.0 if layer == 0 else 0.0)
+			var cc: Color = ink if layer == 0 else col
+			ci.draw_circle(c + Vector2(-r * 0.5, -r * 0.25), k * 0.56, cc)
+			ci.draw_circle(c + Vector2(r * 0.5, -r * 0.25), k * 0.56, cc)
+			ci.draw_colored_polygon(PackedVector2Array([c + Vector2(-k * 1.02, -r * 0.08),
+				c + Vector2(k * 1.02, -r * 0.08), c + Vector2(0, r * 0.95 + (k - r) * 1.3)]), cc)
+		if alive:
+			ci.draw_circle(c + Vector2(-r * 0.55, -r * 0.45), r * 0.18, Color(1, 1, 1, 0.65))
+		else:
+			ci.draw_polyline(PackedVector2Array([c + Vector2(0, -r * 0.55), c + Vector2(-r * 0.2, -r * 0.1),
+				c + Vector2(r * 0.18, r * 0.2), c + Vector2(0, r * 0.7)]), ink, 2.2, true)
+
+# Pandanın başından göstergeye uçan kalp.
+class FlyingHeart extends Control:
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	func _draw() -> void:
+		LivesView.heart(self, Vector2.ZERO, 17.0, true)
+
+# Swap yardımcısı: daire içinde sandviç + dönen oklar, sağ üstte kalan hak rozeti,
+# altında "Swap" yazısı. Dokunuşu main.gd konumdan yakalar (burası sadece çizer) —
+# böylece düğmeye dokunmak yiyeceği de bırakmaz.
+class SwapButton extends Control:
+	var count := 0
+	var active := false
+	var font: Font
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	func _draw() -> void:
+		var r := size.x / 2.0
+		var c := Vector2(r, r)
+		draw_circle(c, r, Color(1.0, 0.84, 0.35, 0.95) if active else Color(0.1, 0.2, 0.1, 0.28))
+		var ink := Color(0.35, 0.22, 0.1) if active else Color(1, 1, 1, 0.45)
+		for a0 in [PI * 1.1, PI * 0.1]:
+			var a1: float = a0 + PI * 0.7
+			draw_arc(c, r * 0.8, a0, a1, 16, ink, 5.0, true)
+			var p := c + Vector2.from_angle(a1) * r * 0.8
+			var t := Vector2.from_angle(a1 + PI / 2.0)
+			var n := Vector2.from_angle(a1)
+			draw_colored_polygon(PackedVector2Array([p + t * 11.0, p - n * 8.0, p + n * 8.0]), ink)
+		draw_set_transform(c + Vector2(0, 2), 0.0, Vector2(0.68, 0.68))
+		Food.paint(self, Food.Kind.SANDWICH)
+		draw_set_transform(Vector2.ZERO)
+		var b := c + Vector2(r * 0.78, -r * 0.78)
+		draw_circle(b, 19.0, Color(0.9, 0.3, 0.28) if count > 0 else Color(0.45, 0.45, 0.45))
+		draw_string(font, b + Vector2(-19, 9), str(count), HORIZONTAL_ALIGNMENT_CENTER, 38, 26, Color.WHITE)
+		draw_string_outline(font, Vector2(0, size.y - 4), "Swap", HORIZONTAL_ALIGNMENT_CENTER, size.x, 26, 6, OUTLINE)
+		draw_string(font, Vector2(0, size.y - 4), "Swap", HORIZONTAL_ALIGNMENT_CENTER, size.x, 26,
+			Color.WHITE if active else Color(1, 1, 1, 0.7))
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -101,6 +217,21 @@ func _ready() -> void:
 	_banner_title = _label("", _bold, 72, GOLD)
 	_shadow(_banner_title)
 	bbox.add_child(_banner_title)
+	# kaybedince: "reklam izle, +1 Swap ile tekrar dene" (dokunuşu main.gd yakalar)
+	_ad_offer = PanelContainer.new()
+	_ad_offer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ad_offer.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var ps := StyleBoxFlat.new()
+	ps.bg_color = Color(0.3, 0.72, 0.4)
+	ps.set_corner_radius_all(34)
+	ps.content_margin_left = 34.0
+	ps.content_margin_right = 34.0
+	ps.content_margin_top = 12.0
+	ps.content_margin_bottom = 12.0
+	_ad_offer.add_theme_stylebox_override("panel", ps)
+	_ad_offer.add_child(_label("▶  Watch ad: +1 Swap", _bold, 32, Color.WHITE))
+	_ad_offer.visible = false
+	bbox.add_child(_ad_offer)
 	_banner_sub = _label("", _med, 32, Color.WHITE)
 	bbox.add_child(_banner_sub)
 	_banner.add_child(bbox)
@@ -152,6 +283,30 @@ func _ready() -> void:
 	_confetti.color_initial_ramp = g
 	add_child(_confetti)
 
+	_swap = SwapButton.new()
+	_swap.font = _bold
+	_swap.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	_swap.offset_left = -150.0
+	_swap.offset_right = -30.0
+	_swap.offset_top = -200.0
+	_swap.offset_bottom = -50.0
+	_swap.visible = false
+	add_child(_swap)
+	move_child(_swap, _banner.get_index())   # kazan/kaybet kartının altında
+
+	# canlar: Swap düğmesinin simetriği, dairesinin ortasıyla aynı hizada
+	_lives = LivesView.new()
+	_lives.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	_lives.offset_left = 24.0
+	_lives.offset_right = 24.0 + 142.0
+	_lives.offset_top = -172.0
+	_lives.offset_bottom = -108.0
+	add_child(_lives)
+	move_child(_lives, _banner.get_index())
+	_fly_heart = FlyingHeart.new()
+	_fly_heart.visible = false
+	add_child(_fly_heart)
+
 	_apply_top_inset()
 
 func _label(text: String, font: Font, size: int, color: Color) -> Label:
@@ -162,6 +317,9 @@ func _label(text: String, font: Font, size: int, color: Color) -> Label:
 	l.add_theme_font_override("font", font)
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", color)
+	# açık (gündüz) zeminde okunsun: koyu kontur
+	l.add_theme_constant_override("outline_size", maxi(6, size / 5))
+	l.add_theme_color_override("font_outline_color", OUTLINE)
 	return l
 
 func _shadow(l: Label) -> void:
@@ -243,9 +401,70 @@ func show_win(level: int) -> void:
 	_confetti.position = Vector2(get_viewport_rect().size.x / 2.0, -20.0)
 	_confetti.restart()
 
-func show_lose(reason: String) -> void:
+func show_lose(reason: String, offer_swap_ad: bool = false) -> void:
 	hide_hold()
+	_ad_offer.visible = offer_swap_ad
 	_show_banner(reason, Color(1.0, 0.5, 0.45), "Tap to try again")
+
+# Swap düğmesi: görünür mü, kalan hak, şu an kullanılabilir mi, ilk tanıtımda zıplasın mı.
+func set_swap(shown: bool, count: int, can_use: bool, highlight: bool) -> void:
+	_swap.visible = shown
+	if _swap.count != count or _swap.active != can_use:
+		_swap.count = count
+		_swap.active = can_use
+		_swap.queue_redraw()
+	var want_pulse := shown and can_use and highlight
+	if want_pulse and _swap_pulse == null:
+		_swap.pivot_offset = Vector2(_swap.size.x / 2.0, _swap.size.x / 2.0)
+		_swap_pulse = create_tween().set_loops()
+		_swap_pulse.tween_property(_swap, "scale", Vector2(1.12, 1.12), 0.4).set_trans(Tween.TRANS_SINE)
+		_swap_pulse.tween_property(_swap, "scale", Vector2.ONE, 0.4).set_trans(Tween.TRANS_SINE)
+	elif not want_pulse and _swap_pulse != null:
+		_swap_pulse.kill()
+		_swap_pulse = null
+		_swap.scale = Vector2.ONE
+
+# Seviye başında canlar dolu.
+func reset_lives(max_lives: int) -> void:
+	if _fly_tween:
+		_fly_tween.kill()
+	_fly_heart.visible = false
+	_lives.max_lives = max_lives
+	_lives.lives = max_lives
+	_lives.queue_redraw()
+
+# Pandaya çarpınca: kalp `from`dan (pandanın başı, ekran koordinatı) göstergeye
+# uçar, varınca oradaki kalp söner ve gösterge sarsılır.
+func lose_life(lives_left: int, from: Vector2) -> void:
+	if _fly_tween:
+		_fly_tween.kill()
+		_lives.lives = lives_left + 1   # önceki uçuş yarıda kaldıysa onun kalbini de düşür
+	var target := _lives.get_global_rect().position + _lives.heart_center(lives_left)
+	_fly_heart.position = from
+	_fly_heart.scale = Vector2(0.6, 0.6)
+	_fly_heart.visible = true
+	_fly_tween = create_tween()
+	_fly_tween.tween_property(_fly_heart, "scale", Vector2(1.5, 1.5), 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_fly_tween.tween_property(_fly_heart, "position", target, 0.65).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	_fly_tween.parallel().tween_property(_fly_heart, "scale", Vector2.ONE, 0.65)
+	_fly_tween.tween_callback(func():
+		_fly_heart.visible = false
+		_lives.lives = lives_left
+		_lives.shake()
+		_lives.queue_redraw())
+
+func swap_rect() -> Rect2:
+	return _swap.get_global_rect() if _swap.visible else Rect2()
+
+func ad_offer_rect() -> Rect2:
+	return _ad_offer.get_global_rect() if _banner.visible and _ad_offer.visible else Rect2()
+
+# Swap edilen yiyeceğin ilerleme şeridindeki simgesi de sandviçe döner.
+func set_icon_kind(index: int, kind: int) -> void:
+	var icons := _progress.get_children().filter(func(c): return not c.is_queued_for_deletion())
+	if index >= 0 and index < icons.size():
+		icons[index].kind = kind
+		icons[index].queue_redraw()
 
 func _show_banner(title: String, col: Color, sub: String) -> void:
 	_banner_title.text = title
@@ -266,6 +485,7 @@ func _show_banner(title: String, col: Color, sub: String) -> void:
 
 func hide_banner() -> void:
 	_banner.visible = false
+	_ad_offer.visible = false
 
 # Seviye başında ortada kısa giriş kartı; yeni yiyecek varsa simgesiyle tanıtılır.
 func show_intro(level: int, hint: String, new_kind: int, duration: float) -> void:

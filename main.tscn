@@ -2,7 +2,9 @@
 
 [ext_resource type="Script" uid="uid://tqfqtionq6wk" path="res://main.gd" id="1_main"]
 [ext_resource type="Script" uid="uid://ph3cwvjww7be" path="res://beam_panda.gd" id="2_panda"]
-[ext_resource type="Script" uid="uid://csmthlqi77lu" path="res://log_stand.gd" id="3_log"]
+[ext_resource type="Script" uid="uid://btn8ts3w8p34l" path="res://stump_art.gd" id="3_log"]
+[ext_resource type="Script" uid="uid://b7wx4vqo1u2f5" path="res://beam_art.gd" id="4_beam"]
+[ext_resource type="Script" uid="uid://c8qm4bj7d0j87" path="res://bamboo_backdrop.gd" id="5_bg"]
 
 [sub_resource type="PhysicsMaterial" id="BeamPhysics"]
 friction = 0.85
@@ -10,27 +12,14 @@ friction = 0.85
 [sub_resource type="RectangleShape2D" id="BeamShape"]
 size = Vector2(560, 28)
 
-[sub_resource type="StyleBoxFlat" id="BeamStyle"]
-bg_color = Color(0.64, 0.45, 0.28, 1)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
-
 [sub_resource type="RectangleShape2D" id="PandaZoneShape"]
 size = Vector2(68, 50)
 
 [node name="Main" type="Node2D" unique_id=1024956653]
 script = ExtResource("1_main")
 
-[node name="Background" type="ColorRect" parent="." unique_id=29514694]
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-color = Color(0.07, 0.09, 0.08, 1)
+[node name="Background" type="Node2D" parent="." unique_id=29514694]
+script = ExtResource("5_bg")
 
 [node name="Stand" type="Node2D" parent="." unique_id=1676476407]
 position = Vector2(360, 950)
@@ -48,13 +37,8 @@ angular_damp = 5.0
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Beam" unique_id=863506965]
 shape = SubResource("BeamShape")
 
-[node name="Visual" type="Panel" parent="Beam" unique_id=29663184]
-offset_left = -280.0
-offset_top = -14.0
-offset_right = 280.0
-offset_bottom = 14.0
-mouse_filter = 2
-theme_override_styles/panel = SubResource("BeamStyle")
+[node name="Visual" type="Node2D" parent="Beam" unique_id=29663184]
+script = ExtResource("4_beam")
 
 [node name="Panda" type="Node2D" parent="Beam" unique_id=2141183007]
 position = Vector2(0, -14)

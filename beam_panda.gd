@@ -1,14 +1,22 @@
-extends Node2D
+extends PandaArt
 
-# Basit oturan panda — Beam'in child'ı, kendi başına fizik nesnesi değil,
-# sadece kirişle birlikte döner. Taban (ayakların bastığı çizgi) kendi
-# orijininde (y=0) ki Beam üstüne konumlandırması kolay olsun.
+# Kirişteki panda — Beam'in child'ı, kendi başına fizik nesnesi değil, sadece
+# kirişle birlikte döner. Çizim PandaArt'ta; burada davranış: gözler bekleyen
+# yiyeceği izler, kiriş tehlikeli eğime gelince endişelenir, çarpılınca kısa süre
+# sersemler (yıldızlar döner), seviye bitince sevinir, arada göz kırpar.
+# main.gd her kare set_watch() çağırır.
 
-var hits := 0
-var happy := false   # seviye bitti: gözler mutlu kavis, küçük zıplama
+const HIT_SECONDS := 1.3
+const LOOK_RANGE := 180.0       # bu kadar yana (px) bakınca gözler tam yana döner
+
+var _hit_left := 0.0
+var _look_target := 0.0
+var _worried := false
+var _blink_in := 2.5
+var _blink_left := 0.0
 
 func celebrate() -> void:
-	happy = true
+	mood = Mood.HAPPY
 	queue_redraw()
 	var t := create_tween()
 	for i in 3:
@@ -16,59 +24,58 @@ func celebrate() -> void:
 		t.tween_property(self, "position:y", position.y, 0.16).set_ease(Tween.EASE_IN)
 
 func reset() -> void:
-	happy = false
+	mood = Mood.IDLE
 	hits = 0
+	look = 0.0
+	_hit_left = 0.0
 	queue_redraw()
 
 func set_hits(n: int) -> void:
 	hits = n
 	queue_redraw()
 	if n > 0:
+		mood = Mood.HIT
+		_hit_left = HIT_SECONDS
 		var t := create_tween()
 		t.tween_property(self, "rotation", 0.12, 0.05)
 		t.tween_property(self, "rotation", -0.12, 0.08)
 		t.tween_property(self, "rotation", 0.0, 0.06)
 
-func _draw() -> void:
-	var body_col := Color(0.97, 0.96, 0.93)
-	var patch_col := Color(0.12, 0.11, 0.10)
-	var ink := Color(0.08, 0.07, 0.07)
+# look_x: izlenecek yiyeceğin pandaya göre yatay uzaklığı (px; yoksa 0),
+# worried: kiriş tehlikeli eğimde mi.
+func set_watch(look_x: float, worried: bool) -> void:
+	_look_target = clampf(look_x / LOOK_RANGE, -1.0, 1.0)
+	_worried = worried
 
-	# gövde (oturur, taban basık)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(-34, -16), Vector2(-30, -40), Vector2(-14, -52), Vector2(14, -52),
-		Vector2(30, -40), Vector2(34, -16), Vector2(24, 0), Vector2(-24, 0)
-	]), body_col)
-
-	# kulaklar
-	draw_circle(Vector2(-24, -50), 11, patch_col)
-	draw_circle(Vector2(24, -50), 11, patch_col)
-
-	# göz yamaları (panda deseni)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(-24, -32), Vector2(-8, -34), Vector2(-8, -20), Vector2(-24, -18)
-	]), patch_col)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(8, -34), Vector2(24, -32), Vector2(24, -18), Vector2(8, -20)
-	]), patch_col)
-
-	# göz akı + bebek (mutluyken ^ ^ kavisleri)
-	if happy:
-		draw_arc(Vector2(-15, -24), 5.0, PI * 1.1, PI * 1.9, 10, Color.WHITE, 2.6, true)
-		draw_arc(Vector2(15, -24), 5.0, PI * 1.1, PI * 1.9, 10, Color.WHITE, 2.6, true)
-		draw_arc(Vector2(0, -8), 5.0, PI * 0.15, PI * 0.85, 10, ink, 2.2, true)   # gülümseme
+func _process(delta: float) -> void:
+	var changed := false
+	var l := move_toward(look, _look_target, delta * 4.0)
+	if l != look:
+		look = l
+		changed = true
+	if mood == Mood.HIT:
+		spin += delta * 5.0
+		_hit_left -= delta
+		if _hit_left <= 0.0:
+			mood = Mood.IDLE
+		changed = true
+	elif mood != Mood.HAPPY:
+		var m := Mood.WORRIED if _worried else Mood.IDLE
+		if m != mood:
+			mood = m
+			changed = true
+	# göz kırpma
+	if _blink_left > 0.0:
+		_blink_left -= delta
+		if _blink_left <= 0.0:
+			blink = false
+			changed = true
 	else:
-		draw_circle(Vector2(-15, -27), 5.0, Color.WHITE)
-		draw_circle(Vector2(15, -27), 5.0, Color.WHITE)
-		draw_circle(Vector2(-14, -26), 2.4, ink)
-		draw_circle(Vector2(16, -26), 2.4, ink)
-
-	# burun
-	draw_circle(Vector2(0, -14), 3.5, ink)
-
-	# vuruş: yanaklar kızarır, üstte kırmızı şişlik çıkar
-	if hits > 0:
-		draw_circle(Vector2(-27, -21), 6.0, Color(1, 0.35, 0.35, 0.55))
-		draw_circle(Vector2(27, -21), 6.0, Color(1, 0.35, 0.35, 0.55))
-		draw_circle(Vector2(8, -53), 9.0, Color(0.86, 0.22, 0.2))
-		draw_circle(Vector2(5, -56), 3.0, Color(1, 0.7, 0.65, 0.8))
+		_blink_in -= delta
+		if _blink_in <= 0.0:
+			_blink_in = randf_range(2.5, 5.0)
+			_blink_left = 0.12
+			blink = true
+			changed = true
+	if changed:
+		queue_redraw()

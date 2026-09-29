@@ -30,6 +30,8 @@ const SAVE_PATH := "user://progress.cfg"
 const TILT_WARN_DEG := 22.0      # bu açıdan sonra kiriş kızarıp yanıp söner (limit TILT_LIMIT_DEG)
 const INTRO_SECONDS := 1.0       # yeni seviye giriş kartı; ilk yiyecek bundan sonra gelir
 const DEV_LONG_PRESS_MS := 600   # test sürümü: seviye başlığına uzun basış = önceki seviye
+const SWAP_UNLOCK_LEVEL := 5     # Swap yardımcısı bu seviyeden itibaren (önce temel mekanik öğrenilsin)
+const SWAP_START := 3            # ilk açılışta hediye Swap hakkı
 
 enum Phase { PLAYING, HOLDING, WON, LOST }
 
@@ -38,7 +40,7 @@ enum Phase { PLAYING, HOLDING, WON, LOST }
 @onready var panda: Node2D = $Beam/Panda
 @onready var panda_zone: Area2D = $Beam/PandaZone
 @onready var food_container: Node2D = $FoodContainer
-@onready var beam_visual: Control = $Beam/Visual
+@onready var beam_visual: CanvasItem = $Beam/Visual
 var hud: LevelHud
 
 var level := 1
@@ -59,6 +61,10 @@ var _guide: DropGuide
 var _t := 0.0
 var _dev_touch_index := -1       # test sürümü kısayolu için başlığa basan parmak
 var _dev_press_msec := 0
+var _saved_level := 1            # progress.cfg'deki seviye (Swap hakkıyla birlikte yazılır)
+var _swaps := SWAP_START         # kalan Swap hakkı (kalıcı)
+var _swap_used := false          # bu seviyede kullanıldı mı (seviye başına 1)
+var _swap_pressing := false      # Swap düğmesine basıldı, bırakılması bekleniyor
 
 # Bekleyen yiyeceğin nereye ineceğini gösteren kesikli çizgi; pandaya
 # denk geliyorsa kırmızı olur.
@@ -71,7 +77,8 @@ class DropGuide extends Node2D:
 	func _draw() -> void:
 		if not active:
 			return
-		var col := Color(1.0, 0.35, 0.3, 0.85) if danger else Color(1, 1, 1, 0.35)
+		# açık zeminde okunsun diye koyu (pandaya denk geliyorsa kırmızı)
+		var col := Color(0.9, 0.2, 0.18, 0.9) if danger else Color(0.18, 0.26, 0.18, 0.45)
 		draw_dashed_line(from, to, col, 3.0, 12.0)
 		draw_line(to + Vector2(-16, 0), to + Vector2(16, 0), col, 3.0)
 
@@ -81,10 +88,6 @@ func _ready() -> void:
 	move_child(_guide, food_container.get_index())   # yiyeceklerin altında çizilsin
 	hud = LevelHud.new()
 	$UI.add_child(hud)
-	# Node2D altındaki ColorRect'in anchor'ı çözülmüyor, boyutu 0 kalıp gri
-	# varsayılan zemin görünüyordu — boyutu elle ver.
-	_fit_background()
-	get_viewport().size_changed.connect(_fit_background)
 	_start_level(_load_level())
 
 # Yerleşmiş bir parça sonradan eğimle kayıp pandaya ulaştıysa: yukarıdan
@@ -102,12 +105,6 @@ func _check_panda_zone() -> void:
 
 # --- seviye akışı ---
 
-func _fit_background() -> void:
-	var bg: ColorRect = $Background
-	bg.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	bg.position = Vector2.ZERO
-	bg.size = get_viewport_rect().size
-
 # retry = aynı seviyeyi tekrar deniyor (kısa giriş kartı, yeni yiyecek tanıtımı yok)
 func _start_level(n: int, retry: bool = false) -> void:
 	level = maxi(n, 1)
@@ -117,12 +114,15 @@ func _start_level(n: int, retry: bool = false) -> void:
 	_seq_index = 0
 	phase = Phase.PLAYING
 	panda_hits = 0
+	_swap_used = false
+	_swap_pressing = false
 	panda.reset()
 	current_food = null
 	_dropping = false
 	_set_guide(false)
 	beam_visual.modulate = Color.WHITE
 	hud.setup_level(level, _level_data["foods"], _level_data["hint"])
+	hud.reset_lives(MAX_PANDA_HITS)
 	var intro: float = 0.35 if retry else INTRO_SECONDS
 	hud.show_intro(level, "" if retry else _level_data["hint"], -1 if retry else Levels.new_kind(level), intro)
 	_spawn_wait = intro + 0.25
@@ -164,6 +164,8 @@ func _beam_angle() -> float:
 func _process(delta: float) -> void:
 	var deg := rad_to_deg(_beam_angle())
 	_t += delta
+	hud.set_swap(level >= SWAP_UNLOCK_LEVEL and (phase == Phase.PLAYING or phase == Phase.HOLDING),
+		_swaps, _can_swap(), level == SWAP_UNLOCK_LEVEL and not _swap_used)
 
 	if phase == Phase.WON or phase == Phase.LOST:
 		return
@@ -172,6 +174,11 @@ func _process(delta: float) -> void:
 		_lose("Out of balance!")
 		return
 	_update_tilt_warning(absf(deg))
+	# panda bekleyen/düşen yiyeceği gözüyle izler, kiriş tehlikedeyse endişelenir
+	var look_x := 0.0
+	if current_food != null:
+		look_x = current_food.global_position.x - panda.global_position.x
+	panda.set_watch(look_x, absf(deg) >= TILT_WARN_DEG)
 
 	_update_food(delta)
 	if phase == Phase.LOST:   # iniş pandaya ikinci vuruş olduysa
@@ -231,7 +238,7 @@ func _lose(reason: String) -> void:
 		current_food.queue_free()
 	current_food = null
 	_set_guide(false)
-	hud.show_lose(reason)
+	hud.show_lose(reason, level >= SWAP_UNLOCK_LEVEL)
 	Input.vibrate_handheld(80)
 
 # Kiriş kritik açıya yaklaştıkça kızarır ve giderek hızlanarak yanıp söner —
@@ -245,16 +252,75 @@ func _update_tilt_warning(abs_deg: float) -> void:
 	var r: float = k * (0.55 + 0.45 * pulse)
 	beam_visual.modulate = Color(1.0 + 0.3 * r, 1.0 - 0.7 * r, 1.0 - 0.7 * r)
 
+# Seviye ve Swap hakkı birlikte okunur/yazılır (ayrı yazmak diğerini silerdi).
 func _load_level() -> int:
 	var cfg := ConfigFile.new()
 	if cfg.load(SAVE_PATH) == OK:
+		_swaps = maxi(0, int(cfg.get_value("progress", "swaps", SWAP_START)))
 		return int(cfg.get_value("progress", "level", 1))
 	return 1
 
 func _save_level(n: int) -> void:
+	_saved_level = n
+	_save_progress()
+
+func _save_progress() -> void:
 	var cfg := ConfigFile.new()
-	cfg.set_value("progress", "level", n)
+	cfg.set_value("progress", "level", _saved_level)
+	cfg.set_value("progress", "swaps", _swaps)
 	cfg.save(SAVE_PATH)
+
+# --- Swap yardımcısı ---
+
+# Sıradaki (henüz bırakılmamış) zor yiyeceği sandviçe çevirir: seviye başına bir kez.
+func _can_swap() -> bool:
+	return level >= SWAP_UNLOCK_LEVEL and phase == Phase.PLAYING and not _swap_used and _swaps > 0 \
+		and current_food != null and current_food.freeze and not _dropping \
+		and current_food.kind != Food.Kind.SANDWICH
+
+func _try_swap() -> void:
+	if not _can_swap():
+		return
+	var old := current_food
+	var f := Food.new()
+	f.setup(Food.Kind.SANDWICH)
+	f.freeze = true
+	f.collision_layer = 0
+	f.collision_mask = 0
+	f.position = old.position
+	f.set_meta("seq", old.get_meta("seq", -1))
+	food_container.remove_child(old)
+	old.queue_free()
+	food_container.add_child(f)
+	current_food = f
+	_swap_used = true
+	_swaps -= 1
+	_save_progress()
+	hud.set_icon_kind(f.get_meta("seq"), Food.Kind.SANDWICH)
+	# gövdeyi ölçeklemek fizikte sorun çıkarır; parlayarak belirsin
+	f.modulate = Color(2.2, 2.2, 2.2)
+	create_tween().tween_property(f, "modulate", Color.WHITE, 0.35)
+	Input.vibrate_handheld(30)
+
+# Kaybedince "reklam izle, +1 Swap ile tekrar dene". AdMob bu projede henüz yok
+# (yayın hazırlığı, faz D) — şimdilik ödül doğrudan verilir; reklam gelince yalnız burası değişir.
+func _on_ad_swap() -> void:
+	_swaps += 1
+	_save_progress()
+	_start_level(level, true)
+
+# Swap düğmesi / kaybetme kartındaki reklam teklifi. true = dokunuş arayüze gitti,
+# oyun (yiyecek tutma/bırakma, tekrar dene) görmesin.
+func _tap_ui(pos: Vector2) -> bool:
+	if phase == Phase.LOST and hud.ad_offer_rect().grow(10).has_point(pos):
+		_on_ad_swap()
+		return true
+	if (phase == Phase.PLAYING or phase == Phase.HOLDING) and hud.swap_rect().grow(12).has_point(pos):
+		# Swap bırakınca (dokunup kaldırınca) çalışır: yiyeceği sağa sürmek için alt köşeye
+		# basan oyuncu yiyeceğin gelmediğini görüp parmağını kaydırır, hak boşa gitmez.
+		_swap_pressing = true
+		return true
+	return false
 
 # --- yiyecek hareketi ---
 
@@ -330,6 +396,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if OS.is_debug_build() and _dev_shortcut(event):
 		return
+	var ui_press: bool = (event is InputEventScreenTouch and event.pressed and _active_touch_index == -1) \
+		or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT)
+	if ui_press and _tap_ui(event.position):
+		return
+	if _swap_pressing and ((event is InputEventScreenTouch and not event.pressed) \
+			or (event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT)):
+		_swap_pressing = false
+		if hud.swap_rect().grow(12).has_point(event.position):
+			_try_swap()
+		return
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			# Zaten aktif bir parmak varsa, yeni parmağı tamamen yok say
@@ -398,7 +474,10 @@ func _release() -> void:
 
 func _spawn_food() -> void:
 	var f := Food.new()
+	var seq_before := _seq_index
 	f.setup(_next_kind())
+	# seviye listesindeki sırası (ilerleme şeridindeki simgesi); havuzdan geldiyse -1
+	f.set_meta("seq", seq_before if _seq_index > seq_before else -1)
 	f.freeze = true
 	f.gravity_scale = 1.0
 	# Donmuşken (düz iniş sırasında) çarpışma tamamen kapalı — donmuş cisim
@@ -490,6 +569,7 @@ func _panda_hit(food: Food) -> void:
 
 	panda_hits += 1
 	panda.set_hits(panda_hits)
+	hud.lose_life(MAX_PANDA_HITS - panda_hits, panda.to_global(Vector2(0, -68)))
 	if panda_hits >= MAX_PANDA_HITS:
 		_lose("Ouch! Poor panda!")
 
