@@ -8,6 +8,10 @@ extends Node2D
 # (angular_damp ve mass, Beam node'unun Inspector'ında / main.tscn'de de var.)
 #
 # PC kısayolları: N = sonraki seviye, B = önceki seviye, R = seviyeyi yeniden başlat
+#
+# Açılışta ana menü (menu_ui.gd): kamera pandaya yaklaşır, PLAY'e basınca geri
+# çekilip seviye başlar. İlk açılışta menü atlanır, oyuncu doğrudan 1. seviyeye girer.
+# Kalıcı durum (seviye, Swap, bambu, aksesuar, tema, günlük seri) GameData'da.
 
 # true: yiyecek tepede bekler, parmağın olduğu yere gelir, bırakınca düşer.
 # false: eski mod — yiyecek hemen düşmeye başlar, basılı tutarak yönlendirilir.
@@ -26,14 +30,14 @@ const STEER_LOCK_DISTANCE := 160.0  # eski mod: altında bu kadar yakın bir şe
 const SPAWN_DELAY := 0.55        # bir yiyecek yerleşince sıradakinin gecikmesi
 const PANDA_HIT_HALF_WIDTH := 34.0  # pandanın yarı genişliği (beam_panda.gd gövdesi ±34)
 const MAX_PANDA_HITS := 2        # bu kadar vuruşta oyun biter
-const SAVE_PATH := "user://progress.cfg"
 const TILT_WARN_DEG := 22.0      # bu açıdan sonra kiriş kızarıp yanıp söner (limit TILT_LIMIT_DEG)
 const INTRO_SECONDS := 1.0       # yeni seviye giriş kartı; ilk yiyecek bundan sonra gelir
 const DEV_LONG_PRESS_MS := 600   # test sürümü: seviye başlığına uzun basış = önceki seviye
 const SWAP_UNLOCK_LEVEL := 5     # Swap yardımcısı bu seviyeden itibaren (önce temel mekanik öğrenilsin)
-const SWAP_START := 3            # ilk açılışta hediye Swap hakkı
+const MENU_ZOOM := 2.0           # menüde kamera pandaya bu kadar yaklaşır
+const CAMERA_SECONDS := 0.6      # menü <-> oyun kamera geçişi
 
-enum Phase { PLAYING, HOLDING, WON, LOST }
+enum Phase { MENU, PLAYING, HOLDING, WON, LOST }
 
 @onready var pivot: StaticBody2D = $Pivot
 @onready var beam: RigidBody2D = $Beam
@@ -41,7 +45,10 @@ enum Phase { PLAYING, HOLDING, WON, LOST }
 @onready var panda_zone: Area2D = $Beam/PandaZone
 @onready var food_container: Node2D = $FoodContainer
 @onready var beam_visual: CanvasItem = $Beam/Visual
+@onready var backdrop: BambooBackdrop = $Background
 var hud: LevelHud
+var menu: MenuUi
+var cam: Camera2D
 
 var level := 1
 var phase := Phase.PLAYING
@@ -61,10 +68,13 @@ var _guide: DropGuide
 var _t := 0.0
 var _dev_touch_index := -1       # test sürümü kısayolu için başlığa basan parmak
 var _dev_press_msec := 0
-var _saved_level := 1            # progress.cfg'deki seviye (Swap hakkıyla birlikte yazılır)
-var _swaps := SWAP_START         # kalan Swap hakkı (kalıcı)
 var _swap_used := false          # bu seviyede kullanıldı mı (seviye başına 1)
 var _swap_pressing := false      # Swap düğmesine basıldı, bırakılması bekleniyor
+var _drops := 0                  # bu seviyede kirişten düşen yiyecek (No drops ödülü)
+var _reward := 0                 # son kazanılan bambu (x2 için)
+var _doubled := false
+var _first_menu := true          # günlük ödül penceresi yalnız ilk menü açılışında kendiliğinden
+var _cam_tween: Tween
 
 # Bekleyen yiyeceğin nereye ineceğini gösteren kesikli çizgi; pandaya
 # denk geliyorsa kırmızı olur.
@@ -88,7 +98,30 @@ func _ready() -> void:
 	move_child(_guide, food_container.get_index())   # yiyeceklerin altında çizilsin
 	hud = LevelHud.new()
 	$UI.add_child(hud)
-	_start_level(_load_level())
+	hud.next_pressed.connect(func(): _start_level(level + 1))
+	hud.retry_pressed.connect(func(): _start_level(level, true))
+	hud.home_pressed.connect(_go_home)
+	hud.double_pressed.connect(_on_ad_double)
+	hud.swap_ad_pressed.connect(_on_ad_swap)
+	hud.pause_pressed.connect(_pause)
+	hud.resume_pressed.connect(_resume)
+	menu = MenuUi.new()
+	$UI.add_child(menu)
+	menu.play_pressed.connect(_on_play)
+	menu.outfit_preview.connect(func(o: Dictionary): panda.set_outfit(o))
+	menu.theme_picked.connect(func(t: String): backdrop.set_mood(t))
+	cam = Camera2D.new()
+	add_child(cam)
+	cam.make_current()
+	backdrop.set_mood(GameData.theme)
+	panda.set_outfit(GameData.outfit)
+	if GameData.is_new:
+		# ilk açılış: menü yok, oyuncu hemen oynayarak öğrensin
+		menu.visible = false
+		_set_camera(false, true)
+		_start_level(1)
+	else:
+		_enter_menu(true)
 
 # Yerleşmiş bir parça sonradan eğimle kayıp pandaya ulaştıysa: yukarıdan
 # düşmüş gibi aynı _panda_hit sonucu (yaralanma görseli / 2. vuruşta bitiş).
@@ -108,25 +141,33 @@ func _check_panda_zone() -> void:
 # retry = aynı seviyeyi tekrar deniyor (kısa giriş kartı, yeni yiyecek tanıtımı yok)
 func _start_level(n: int, retry: bool = false) -> void:
 	level = maxi(n, 1)
-	_save_level(level)
+	GameData.set_level(level)
 	_level_data = Levels.get_level(level)
 	_rng.seed = level * 104729   # kirişten düşen yiyeceğin yedeği de her denemede aynı gelsin
 	_seq_index = 0
 	phase = Phase.PLAYING
 	panda_hits = 0
+	_drops = 0
+	_doubled = false
 	_swap_used = false
 	_swap_pressing = false
-	panda.reset()
-	current_food = null
-	_dropping = false
-	_set_guide(false)
-	beam_visual.modulate = Color.WHITE
+	hud.set_play_visible(true)
+	_reset_field()
 	hud.setup_level(level, _level_data["foods"], _level_data["hint"])
 	hud.reset_lives(MAX_PANDA_HITS)
 	var intro: float = 0.35 if retry else INTRO_SECONDS
 	hud.show_intro(level, "" if retry else _level_data["hint"], -1 if retry else Levels.new_kind(level), intro)
 	_spawn_wait = intro + 0.25
 
+# Kirişi ve pandayı sıfırla, eski yiyecekleri kaldır (yeni seviye ve menüye dönüş).
+func _reset_field() -> void:
+	panda.reset()
+	current_food = null
+	_dropping = false
+	_holding = false
+	_active_touch_index = -1
+	_set_guide(false)
+	beam_visual.modulate = Color.WHITE
 	# remove_child: queue_free'lenen eski yiyecekler kare sonuna kadar çocuk olarak
 	# kalıp yeni seviyenin ilk karesinde "yerleşmiş" sayılabiliyordu.
 	for c in food_container.get_children():
@@ -140,6 +181,78 @@ func _start_level(n: int, retry: bool = false) -> void:
 	PhysicsServer2D.body_set_state(rid, PhysicsServer2D.BODY_STATE_TRANSFORM, Transform2D(0.0, pivot.position))
 	PhysicsServer2D.body_set_state(rid, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY, Vector2.ZERO)
 	PhysicsServer2D.body_set_state(rid, PhysicsServer2D.BODY_STATE_ANGULAR_VELOCITY, 0.0)
+
+# --- menü, kamera, duraklatma ---
+
+# instant: açılışta kamera zaten menü konumunda başlar.
+func _enter_menu(instant: bool) -> void:
+	phase = Phase.MENU
+	get_tree().paused = false
+	hud.set_play_visible(false)
+	_reset_field()
+	panda.set_watch(0.0, false)
+	_set_camera(true, instant)
+	menu.open(_first_menu)
+	_first_menu = false
+
+func _on_play() -> void:
+	if phase != Phase.MENU or (_cam_tween and _cam_tween.is_running()):
+		return
+	menu.close()
+	_set_camera(false, false)
+	_cam_tween.tween_callback(func(): _start_level(GameData.level))
+
+func _go_home() -> void:
+	_enter_menu(false)
+
+func _pause() -> void:
+	if phase != Phase.PLAYING and phase != Phase.HOLDING:
+		return
+	_holding = false
+	_active_touch_index = -1
+	_swap_pressing = false
+	get_tree().paused = true
+	hud.show_pause(true)
+
+func _resume() -> void:
+	get_tree().paused = false
+	hud.show_pause(false)
+
+# Menüde kamera pandanın yüzüne yaklaşır (panda menünün vitrini); oyunda kamera
+# tam ekran ve dönüşümsüz — dokunuş x'i doğrudan dünya x'i olarak kullanılıyor.
+func _set_camera(menu_view: bool, instant: bool) -> void:
+	var vs := get_viewport_rect().size
+	var pos := vs / 2.0
+	var z := 1.0
+	if menu_view:
+		z = MENU_ZOOM
+		var head_y := pivot.position.y + panda.position.y - 68.0
+		pos = Vector2(pivot.position.x, head_y + 0.1 * vs.y / z)   # yüz ekranın %40'ında
+	if _cam_tween:
+		_cam_tween.kill()
+	if instant:
+		cam.position = pos
+		cam.zoom = Vector2(z, z)
+		return
+	_cam_tween = create_tween().set_parallel().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	_cam_tween.tween_property(cam, "position", pos, CAMERA_SECONDS)
+	_cam_tween.tween_property(cam, "zoom", Vector2(z, z), CAMERA_SECONDS)
+	_cam_tween.chain()
+
+# Android geri tuşu: panel -> kapat, oyun -> duraklat, duraklatılmış -> devam,
+# kart -> menü, menü -> çık.
+func _notification(what: int) -> void:
+	if what != NOTIFICATION_WM_GO_BACK_REQUEST:
+		return
+	if phase == Phase.MENU:
+		if not menu.back():
+			get_tree().quit()
+	elif get_tree().paused:
+		_resume()
+	elif phase == Phase.PLAYING or phase == Phase.HOLDING:
+		_pause()
+	else:
+		_go_home()
 
 func _target() -> int:
 	return _level_data["foods"].size()
@@ -162,10 +275,12 @@ func _beam_angle() -> float:
 	return xf.get_rotation()
 
 func _process(delta: float) -> void:
+	if phase == Phase.MENU:
+		return
 	var deg := rad_to_deg(_beam_angle())
 	_t += delta
 	hud.set_swap(level >= SWAP_UNLOCK_LEVEL and (phase == Phase.PLAYING or phase == Phase.HOLDING),
-		_swaps, _can_swap(), level == SWAP_UNLOCK_LEVEL and not _swap_used)
+		GameData.swaps, _can_swap(), level == SWAP_UNLOCK_LEVEL and not _swap_used)
 
 	if phase == Phase.WON or phase == Phase.LOST:
 		return
@@ -222,13 +337,21 @@ func _mark_lost_foods() -> void:
 			var local := beam.to_local(f.global_position)
 			if local.y > 30.0 or absf(local.x) > 320.0:
 				f.set_meta("lost", true)
+				_drops += 1
 
 func _win() -> void:
 	phase = Phase.WON
 	_set_guide(false)
-	_save_level(level + 1)
+	var had_sunset := GameData.sunset_unlocked()
+	GameData.set_level(level + 1)
+	var rewards := GameData.level_rewards(Levels.is_peak(level), panda_hits, _drops)
+	_reward = 0
+	for r in rewards:
+		_reward += r[1]
+	GameData.add_bamboo(_reward)
 	beam_visual.modulate = Color.WHITE
-	hud.show_win(level)
+	hud.show_win(level, rewards, _reward, panda_hits == 0 and _drops == 0, Accessories.next_goal(GameData.owned),
+		GameData.bamboo, GameData.sunset_unlocked() and not had_sunset, true)
 	panda.celebrate()
 	Input.vibrate_handheld(60)
 
@@ -252,29 +375,11 @@ func _update_tilt_warning(abs_deg: float) -> void:
 	var r: float = k * (0.55 + 0.45 * pulse)
 	beam_visual.modulate = Color(1.0 + 0.3 * r, 1.0 - 0.7 * r, 1.0 - 0.7 * r)
 
-# Seviye ve Swap hakkı birlikte okunur/yazılır (ayrı yazmak diğerini silerdi).
-func _load_level() -> int:
-	var cfg := ConfigFile.new()
-	if cfg.load(SAVE_PATH) == OK:
-		_swaps = maxi(0, int(cfg.get_value("progress", "swaps", SWAP_START)))
-		return int(cfg.get_value("progress", "level", 1))
-	return 1
-
-func _save_level(n: int) -> void:
-	_saved_level = n
-	_save_progress()
-
-func _save_progress() -> void:
-	var cfg := ConfigFile.new()
-	cfg.set_value("progress", "level", _saved_level)
-	cfg.set_value("progress", "swaps", _swaps)
-	cfg.save(SAVE_PATH)
-
 # --- Swap yardımcısı ---
 
 # Sıradaki (henüz bırakılmamış) zor yiyeceği sandviçe çevirir: seviye başına bir kez.
 func _can_swap() -> bool:
-	return level >= SWAP_UNLOCK_LEVEL and phase == Phase.PLAYING and not _swap_used and _swaps > 0 \
+	return level >= SWAP_UNLOCK_LEVEL and phase == Phase.PLAYING and not _swap_used and GameData.swaps > 0 \
 		and current_food != null and current_food.freeze and not _dropping \
 		and current_food.kind != Food.Kind.SANDWICH
 
@@ -294,27 +399,31 @@ func _try_swap() -> void:
 	food_container.add_child(f)
 	current_food = f
 	_swap_used = true
-	_swaps -= 1
-	_save_progress()
+	GameData.use_swap()
 	hud.set_icon_kind(f.get_meta("seq"), Food.Kind.SANDWICH)
 	# gövdeyi ölçeklemek fizikte sorun çıkarır; parlayarak belirsin
 	f.modulate = Color(2.2, 2.2, 2.2)
 	create_tween().tween_property(f, "modulate", Color.WHITE, 0.35)
 	Input.vibrate_handheld(30)
 
-# Kaybedince "reklam izle, +1 Swap ile tekrar dene". AdMob bu projede henüz yok
-# (yayın hazırlığı, faz D) — şimdilik ödül doğrudan verilir; reklam gelince yalnız burası değişir.
+# Kaybedince "reklam izle, +1 Swap ile tekrar dene". AdMob henüz bağlı değil
+# (C5) — şimdilik ödül doğrudan verilir; reklam gelince yalnız bu iki fonksiyon değişir.
 func _on_ad_swap() -> void:
-	_swaps += 1
-	_save_progress()
+	GameData.add_swaps(1)
 	_start_level(level, true)
 
-# Swap düğmesi / kaybetme kartındaki reklam teklifi. true = dokunuş arayüze gitti,
+# Kazanınca "reklam izle, bambuyu ikiye katla" (seviye başına bir kez).
+func _on_ad_double() -> void:
+	if _doubled or phase != Phase.WON:
+		return
+	_doubled = true
+	GameData.add_bamboo(_reward)
+	hud.set_win_total(_reward * 2, true, GameData.bamboo)
+	hud.hide_ad_button()
+
+# Swap düğmesi. (Kart ve menü düğmeleri dokunuşu kendileri yakalar — UiKit.Btn.) true = dokunuş arayüze gitti,
 # oyun (yiyecek tutma/bırakma, tekrar dene) görmesin.
 func _tap_ui(pos: Vector2) -> bool:
-	if phase == Phase.LOST and hud.ad_offer_rect().grow(10).has_point(pos):
-		_on_ad_swap()
-		return true
 	if (phase == Phase.PLAYING or phase == Phase.HOLDING) and hud.swap_rect().grow(12).has_point(pos):
 		# Swap bırakınca (dokunup kaldırınca) çalışır: yiyeceği sağa sürmek için alt köşeye
 		# basan oyuncu yiyeceğin gelmediğini görüp parmağını kaydırır, hak boşa gitmez.
@@ -388,6 +497,8 @@ func _steer(delta: float) -> void:
 		_sweep(current_food, Vector2(dx, 0))   # yandaki bir yığının içine kaymasın
 
 func _unhandled_input(event: InputEvent) -> void:
+	if phase == Phase.MENU:
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_N: _start_level(level + 1)
@@ -453,12 +564,8 @@ func _dev_shortcut(event: InputEvent) -> bool:
 	return false
 
 func _press(x: float) -> void:
-	if phase == Phase.WON:
-		_start_level(level + 1)
-		return
-	if phase == Phase.LOST:
-		_start_level(level, true)
-		return
+	if phase == Phase.WON or phase == Phase.LOST:
+		return   # kartın düğmeleri karar verir (Next / Try again / Home)
 	_holding = true
 	_touch_x = x
 

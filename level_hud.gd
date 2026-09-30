@@ -37,7 +37,27 @@ var _swap_pulse: Tween
 var _lives: LivesView
 var _fly_heart: FlyingHeart
 var _fly_tween: Tween
-var _ad_offer: PanelContainer
+var _card_box: VBoxContainer
+var _perfect: Label
+var _rewards: VBoxContainer
+var _total: HBoxContainer
+var _total_label: Label
+var _goal: GoalBar
+var _new_theme: Label
+var _btn_ad: UiKit.Btn
+var _btn_main: UiKit.Btn
+var _btn_home: UiKit.Btn
+var _pause_btn: UiKit.Btn
+var _pause: Control
+var _won := false
+
+signal next_pressed
+signal retry_pressed
+signal home_pressed
+signal double_pressed
+signal swap_ad_pressed
+signal pause_pressed
+signal resume_pressed
 
 # Küçük yiyecek simgesi: yiyeceğin kendi çizimi (Food.paint) kutuya sığdırılır.
 class FoodIcon extends Control:
@@ -127,6 +147,43 @@ class FlyingHeart extends Control:
 	func _draw() -> void:
 		LivesView.heart(self, Vector2.ZERO, 17.0, true)
 
+# Kazanma kartında sıradaki aksesuar hedefi: "Next: Chef Hat" + dolum çubuğu.
+class GoalBar extends Control:
+	var item_name := ""
+	var have := 0
+	var need := 1
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	func _draw() -> void:
+		var ready := have >= need
+		var head := ("Ready to buy: %s!" if ready else "Next: %s") % item_name
+		draw_string_outline(UiKit.BOLD, Vector2(0, 30), head, HORIZONTAL_ALIGNMENT_CENTER, size.x, 30, 7, OUTLINE)
+		draw_string(UiKit.BOLD, Vector2(0, 30), head, HORIZONTAL_ALIGNMENT_CENTER, size.x, 30, GOLD if ready else Color.WHITE)
+		var r := Rect2(30, 46, size.x - 40, 38)
+		var bg := StyleBoxFlat.new()
+		bg.bg_color = Color(0.1, 0.15, 0.1, 0.6)
+		bg.set_corner_radius_all(19)
+		bg.border_color = Color(1, 1, 1, 0.8)
+		bg.set_border_width_all(3)
+		draw_style_box(bg, r)
+		var k := clampf(float(have) / float(need), 0.0, 1.0)
+		if k > 0.0:
+			var fill := StyleBoxFlat.new()
+			fill.bg_color = UiKit.GREEN if ready else GOLD
+			fill.set_corner_radius_all(15)
+			draw_style_box(fill, Rect2(r.position + Vector2(4, 4), Vector2(maxf(30.0, (r.size.x - 8) * k), r.size.y - 8)))
+		UiKit.bamboo(self, Vector2(30, r.get_center().y), 50.0)
+		var t := "%d / %d" % [mini(have, need), need]
+		draw_string_outline(UiKit.BOLD, Vector2(r.position.x, r.position.y + 29), t, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 26, 6, OUTLINE)
+		draw_string(UiKit.BOLD, Vector2(r.position.x, r.position.y + 29), t, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 26, Color.WHITE)
+
+# Kartta bambu simgesi (toplam ödülün yanında).
+class BambooIcon extends Control:
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	func _draw() -> void:
+		UiKit.bamboo(self, size / 2.0, size.y)
+
 # Swap yardımcısı: daire içinde sandviç + dönen oklar, sağ üstte kalan hak rozeti,
 # altında "Swap" yazısı. Dokunuşu main.gd konumdan yakalar (burası sadece çizer) —
 # böylece düğmeye dokunmak yiyeceği de bırakmaz.
@@ -197,46 +254,109 @@ func _ready() -> void:
 	_hold_box.add_child(_hold_num)
 	add_child(_hold_box)
 
-	# kazanma / kaybetme kartı
+	# kazanma / kaybetme kartı: başlık, ödül satırları, toplam bambu, sıradaki hedef,
+	# düğmeler. Perde arkadaki oyuna giden dokunuşları yutar.
 	_banner = Control.new()
 	_banner.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_banner.visible = false
-	var dim := ColorRect.new()
-	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	dim.color = Color(0, 0, 0, 0.45)
-	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_banner.add_child(dim)
-	var bbox := VBoxContainer.new()
-	bbox.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	bbox.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	bbox.grow_vertical = Control.GROW_DIRECTION_BOTH
-	bbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	bbox.add_theme_constant_override("separation", 28)
-	bbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_banner.add_child(UiKit.Blocker.new())
+	_card_box = VBoxContainer.new()
+	_card_box.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_card_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_card_box.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_card_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	_card_box.add_theme_constant_override("separation", 14)
+	_card_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_banner_title = _label("", _bold, 72, GOLD)
 	_shadow(_banner_title)
-	bbox.add_child(_banner_title)
-	# kaybedince: "reklam izle, +1 Swap ile tekrar dene" (dokunuşu main.gd yakalar)
-	_ad_offer = PanelContainer.new()
-	_ad_offer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_ad_offer.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	var ps := StyleBoxFlat.new()
-	ps.bg_color = Color(0.3, 0.72, 0.4)
-	ps.set_corner_radius_all(34)
-	ps.content_margin_left = 34.0
-	ps.content_margin_right = 34.0
-	ps.content_margin_top = 12.0
-	ps.content_margin_bottom = 12.0
-	_ad_offer.add_theme_stylebox_override("panel", ps)
-	_ad_offer.add_child(_label("▶  Watch ad: +1 Swap", _bold, 32, Color.WHITE))
-	_ad_offer.visible = false
-	bbox.add_child(_ad_offer)
+	_card_box.add_child(_banner_title)
+	_perfect = _label("PERFECT!", _bold, 52, Color(0.55, 0.95, 0.5))
+	_card_box.add_child(_perfect)
+	_rewards = VBoxContainer.new()
+	_rewards.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_rewards.add_theme_constant_override("separation", 0)
+	_card_box.add_child(_rewards)
+	_total = HBoxContainer.new()
+	_total.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_total.alignment = BoxContainer.ALIGNMENT_CENTER
+	_total.add_theme_constant_override("separation", 10)
+	var bi := BambooIcon.new()
+	bi.custom_minimum_size = Vector2(76, 76)
+	_total.add_child(bi)
+	_total_label = _label("", _bold, 72, GOLD)
+	_total.add_child(_total_label)
+	_card_box.add_child(_total)
+	_new_theme = _label("New theme: Sunset!", _bold, 34, Color(1.0, 0.7, 0.45))
+	_card_box.add_child(_new_theme)
+	_goal = GoalBar.new()
+	_goal.custom_minimum_size = Vector2(500, 90)
+	_goal.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_card_box.add_child(_goal)
 	_banner_sub = _label("", _med, 32, Color.WHITE)
-	bbox.add_child(_banner_sub)
-	_banner.add_child(bbox)
+	_card_box.add_child(_banner_sub)
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(0, 6)
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_card_box.add_child(gap)
+	# reklam teklifi (kazanınca x2 bambu, kaybedince +1 Swap)
+	_btn_ad = UiKit.btn("", UiKit.ORANGE, 430, 100, 38, _on_ad_btn, UiKit.ad)
+	_btn_ad.icon_size = 54.0
+	_btn_ad.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_card_box.add_child(_btn_ad)
+	var row := HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 22)
+	_btn_home = UiKit.btn("", UiKit.BLUE, 108, 104, 30, func(): home_pressed.emit(), UiKit.home)
+	_btn_home.icon_size = 56.0
+	row.add_child(_btn_home)
+	_btn_main = UiKit.btn("", UiKit.GREEN, 300, 104, 42, _on_main_btn)
+	row.add_child(_btn_main)
+	_card_box.add_child(row)
+	_banner.add_child(_card_box)
 	add_child(_banner)
-	_pulse(_banner_sub)
+
+	# oyun sırasında sol üstte duraklat
+	_pause_btn = UiKit.btn("", Color(0.36, 0.6, 0.34), 88, 88, 30, func(): pause_pressed.emit(), UiKit.pause)
+	_pause_btn.icon_size = 72.0
+	_pause_btn.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	_pause_btn.offset_left = 22.0
+	_pause_btn.offset_right = 110.0
+	_pause_btn.offset_top = 30.0
+	_pause_btn.offset_bottom = 118.0
+	add_child(_pause_btn)
+	move_child(_pause_btn, _banner.get_index())   # kazan/kaybet kartının altında
+
+	# duraklatma kartı (ağaç duraklatılmışken de dokunuş alsın)
+	_pause = Control.new()
+	_pause.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_pause.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_pause.process_mode = Node.PROCESS_MODE_ALWAYS
+	_pause.visible = false
+	var pb := UiKit.Blocker.new()
+	pb.color = Color(0, 0, 0, 0.55)
+	_pause.add_child(pb)
+	var pbox := VBoxContainer.new()
+	pbox.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	pbox.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	pbox.grow_vertical = Control.GROW_DIRECTION_BOTH
+	pbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	pbox.add_theme_constant_override("separation", 26)
+	pbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var pt := _label("PAUSED", _bold, 80, Color.WHITE)
+	_shadow(pt)
+	pbox.add_child(pt)
+	var resume := UiKit.btn("Resume", UiKit.GREEN, 380, 108, 44, func(): resume_pressed.emit(), UiKit.play)
+	resume.icon_size = 56.0
+	resume.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	pbox.add_child(resume)
+	var ph := UiKit.btn("Home", UiKit.BLUE, 380, 108, 44, func(): home_pressed.emit(), UiKit.home)
+	ph.icon_size = 50.0
+	ph.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	pbox.add_child(ph)
+	_pause.add_child(pbox)
+	add_child(_pause)
 
 	# yeni seviye giriş kartı
 	_intro = VBoxContainer.new()
@@ -340,7 +460,7 @@ func _apply_top_inset() -> void:
 	var inset: float = float(safe.position.y) * get_viewport_rect().size.y / float(win.y)
 	if inset <= 0.0:
 		return
-	for c: Control in [_title, _progress, _hint]:
+	for c: Control in [_title, _progress, _hint, _pause_btn]:
 		c.offset_top += inset
 		c.offset_bottom += inset
 
@@ -395,16 +515,102 @@ func hide_hold() -> void:
 	_hold_box.visible = false
 	_hold_shown = -1
 
-func show_win(level: int) -> void:
+# rewards: [[yazı, miktar], ...]; goal: Accessories.next_goal sonucu ({} = hepsi alındı).
+func show_win(level: int, rewards: Array, total: int, perfect: bool, goal: Dictionary, bamboo: int,
+		new_theme: bool, offer_double: bool) -> void:
 	hide_hold()
-	_show_banner("LEVEL %d\nCOMPLETE!" % level, GOLD, "Tap for the next level")
+	_won = true
+	_clear_rewards()
+	for r in rewards:
+		_rewards.add_child(_label("%s  +%d" % [r[0], r[1]], _med, 32, Color.WHITE))
+	_rewards.visible = true
+	_perfect.visible = perfect
+	_total.visible = true
+	set_win_total(total, false)
+	_new_theme.visible = new_theme
+	_goal.visible = not goal.is_empty()
+	if not goal.is_empty():
+		_goal.item_name = goal["name"]
+		_goal.have = bamboo
+		_goal.need = goal["price"]
+		_goal.queue_redraw()
+	_banner_sub.visible = false
+	_btn_ad.visible = offer_double
+	_btn_ad.text = "x2 Bamboo"
+	_btn_main.text = "Next"
+	_btn_main.icon = UiKit.play
+	_btn_main.icon_size = 50.0
+	_show_banner("LEVEL %d\nCOMPLETE!" % level, GOLD)
+	if perfect:
+		_perfect.pivot_offset = Vector2(_perfect.size.x / 2.0, _perfect.size.y / 2.0)
+		_perfect.scale = Vector2(0.3, 0.3)
+		var t := create_tween()
+		t.tween_interval(0.35)
+		t.tween_property(_perfect, "scale", Vector2.ONE, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_confetti.position = Vector2(get_viewport_rect().size.x / 2.0, -20.0)
 	_confetti.restart()
 
+# x2 alınınca toplam büyüyerek güncellenir, sıradaki hedef çubuğu da.
+func set_win_total(total: int, animate: bool, bamboo: int = -1) -> void:
+	_total_label.text = "+%d" % total
+	if bamboo >= 0:
+		_goal.have = bamboo
+		_goal.queue_redraw()
+	if animate:
+		_total.pivot_offset = _total.size / 2.0
+		_total.scale = Vector2(1.5, 1.5)
+		create_tween().tween_property(_total, "scale", Vector2.ONE, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+func hide_ad_button() -> void:
+	_btn_ad.visible = false
+
 func show_lose(reason: String, offer_swap_ad: bool = false) -> void:
 	hide_hold()
-	_ad_offer.visible = offer_swap_ad
-	_show_banner(reason, Color(1.0, 0.5, 0.45), "Tap to try again")
+	_won = false
+	_clear_rewards()
+	_rewards.visible = false
+	_perfect.visible = false
+	_total.visible = false
+	_new_theme.visible = false
+	_goal.visible = false
+	_banner_sub.visible = false
+	_btn_ad.visible = offer_swap_ad
+	_btn_ad.text = "+1 Swap"
+	_btn_main.text = "Try again"
+	_btn_main.icon = UiKit.retry
+	_btn_main.icon_size = 56.0
+	_show_banner(reason, Color(1.0, 0.5, 0.45))
+
+func _clear_rewards() -> void:
+	for c in _rewards.get_children():
+		_rewards.remove_child(c)
+		c.queue_free()
+
+func _on_ad_btn() -> void:
+	if _won:
+		double_pressed.emit()
+	else:
+		swap_ad_pressed.emit()
+
+func _on_main_btn() -> void:
+	if _won:
+		next_pressed.emit()
+	else:
+		retry_pressed.emit()
+
+func show_pause(on: bool) -> void:
+	_pause.visible = on
+
+# Menüdeyken oyun göstergeleri gizli.
+func set_play_visible(on: bool) -> void:
+	for c: Control in [_title, _progress, _hint, _lives, _pause_btn]:
+		c.visible = on
+	if not on:
+		hide_hold()
+		hide_banner()
+		_intro.visible = false
+		_pause.visible = false
+		_swap.visible = false
 
 # Swap düğmesi: görünür mü, kalan hak, şu an kullanılabilir mi, ilk tanıtımda zıplasın mı.
 func set_swap(shown: bool, count: int, can_use: bool, highlight: bool) -> void:
@@ -456,9 +662,6 @@ func lose_life(lives_left: int, from: Vector2) -> void:
 func swap_rect() -> Rect2:
 	return _swap.get_global_rect() if _swap.visible else Rect2()
 
-func ad_offer_rect() -> Rect2:
-	return _ad_offer.get_global_rect() if _banner.visible and _ad_offer.visible else Rect2()
-
 # Swap edilen yiyeceğin ilerleme şeridindeki simgesi de sandviçe döner.
 func set_icon_kind(index: int, kind: int) -> void:
 	var icons := _progress.get_children().filter(func(c): return not c.is_queued_for_deletion())
@@ -466,15 +669,16 @@ func set_icon_kind(index: int, kind: int) -> void:
 		icons[index].kind = kind
 		icons[index].queue_redraw()
 
-func _show_banner(title: String, col: Color, sub: String) -> void:
+func _show_banner(title: String, col: Color) -> void:
 	_banner_title.text = title
 	_banner_title.add_theme_color_override("font_color", col)
-	# uzun tek satırlık başlık (ör. "Bonk! Poor panda!") ekran kenarına dayanmasın
+	# uzun tek satırlık başlık (ör. "Ouch! Poor panda!") ekran kenarına dayanmasın
 	var longest := 0
 	for line in title.split("\n"):
 		longest = maxi(longest, line.length())
 	_banner_title.add_theme_font_size_override("font_size", 72 if longest <= 12 else 56)
-	_banner_sub.text = sub
+	for b in [_btn_ad, _btn_main, _btn_home]:
+		b.queue_redraw()
 	_banner.visible = true
 	_banner.modulate.a = 0.0
 	create_tween().tween_property(_banner, "modulate:a", 1.0, 0.2)
@@ -485,7 +689,6 @@ func _show_banner(title: String, col: Color, sub: String) -> void:
 
 func hide_banner() -> void:
 	_banner.visible = false
-	_ad_offer.visible = false
 
 # Seviye başında ortada kısa giriş kartı; yeni yiyecek varsa simgesiyle tanıtılır.
 func show_intro(level: int, hint: String, new_kind: int, duration: float) -> void:

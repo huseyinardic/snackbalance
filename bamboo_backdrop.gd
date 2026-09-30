@@ -37,6 +37,17 @@ var _glow: GradientTexture2D
 var _rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
+	_build()
+
+# Tema değişince (menüdeki Themes) gökyüzü/parıltı dokuları yeniden kurulur.
+func set_mood(m: String) -> void:
+	if not MOODS.has(m):
+		return
+	mood = m
+	_build()
+	queue_redraw()
+
+func _build() -> void:
 	var m: Dictionary = MOODS[mood]
 	var g := Gradient.new()
 	g.offsets = PackedFloat32Array([0.0, 0.55, 1.0])

@@ -22,17 +22,30 @@ var look := 0.0      # -1 (sol) .. 1 (sağ): gözler bekleyen yiyeceğe bakar
 var hits := 0        # pandaya çarpan yiyecek sayısı (yara bandı)
 var spin := 0.0      # HIT: başının üstünde dönen yıldızların açısı
 var blink := false   # göz kırpma anı (IDLE / WORRIED'da gözler kapalı çizgi)
+# takılı aksesuarlar (Accessories.LIST id'leri; "" = boş yuva)
+var head_item := ""
+var face_item := ""
+var neck_item := ""
+var mouth_item := ""
+
+func set_outfit(outfit: Dictionary) -> void:
+	head_item = outfit.get("head", "")
+	face_item = outfit.get("face", "")
+	neck_item = outfit.get("neck", "")
+	mouth_item = outfit.get("mouth", "")
+	queue_redraw()
 
 func _draw() -> void:
 	var arms_up := mood == Mood.HAPPY
 	var arm_l := Vector2(-31, -52) if arms_up else Vector2(-25, -27)
 	var arm_r := Vector2(31, -52) if arms_up else Vector2(25, -27)
 	var arm_rot := 0.6 if arms_up else 0.35
+	var arm_r_rot := arm_rot if arms_up else -arm_rot
 
 	# 1) tüm parçaların konturu (birleşik siluet)
 	for e in [[Vector2(-22, -93), 11.0, 11.0, 0.0], [Vector2(22, -93), 11.0, 11.0, 0.0],
 			[Vector2(0, -26), 31.0, 28.0, 0.0], [Vector2(0, -68), 31.0, 30.0, 0.0],
-			[arm_l, 9.0, 15.0, -arm_rot if arms_up else arm_rot], [arm_r, 9.0, 15.0, arm_rot if arms_up else -arm_rot],
+			[arm_l, 9.0, 15.0, -arm_rot if arms_up else arm_rot], [arm_r, 9.0, 15.0, arm_r_rot],
 			[Vector2(-15, 5), 11.0, 9.0, 0.0], [Vector2(15, 5), 11.0, 9.0, 0.0]]:
 		ArtUtil.ellipse(self, e[0], e[1] + OUT, e[2] + OUT, e[3], INK)
 
@@ -47,9 +60,12 @@ func _draw() -> void:
 	for x in [-15.0, 15.0]:
 		ArtUtil.ellipse(self, Vector2(x, 5), 11, 9, 0.0, BLACK)
 		ArtUtil.ellipse(self, Vector2(x, 7), 5.5, 4.0, 0.0, PAD)
+	# önlük gövdenin üstünde, kolların ve kafanın altında
+	if neck_item != "":
+		Accessories.draw(self, neck_item)
 	# 5) kollar
 	ArtUtil.ellipse(self, arm_l, 9, 15, -arm_rot if arms_up else arm_rot, BLACK)
-	ArtUtil.ellipse(self, arm_r, 9, 15, arm_rot if arms_up else -arm_rot, BLACK)
+	ArtUtil.ellipse(self, arm_r, 9, 15, arm_r_rot, BLACK)
 	# 6) kafa
 	ArtUtil.ellipse(self, Vector2(0, -68), 31, 30, 0.0, FUR_SHADE)
 	ArtUtil.ellipse(self, Vector2(-2, -70), 28.5, 27.5, 0.0, FUR)
@@ -70,8 +86,14 @@ func _draw() -> void:
 		var d := Vector2(30, -78)
 		draw_colored_polygon(PackedVector2Array([d + Vector2(0, -9), d + Vector2(4.5, 0), d + Vector2(-4.5, 0)]), Color(0.55, 0.8, 1.0))
 		draw_circle(d, 4.5, Color(0.55, 0.8, 1.0))
+	if face_item != "":
+		Accessories.draw(self, face_item)
+	if mouth_item != "":
+		Accessories.draw(self, mouth_item, arms_up)
 	if hits > 0:
 		_bandage()
+	if head_item != "":
+		Accessories.draw(self, head_item)
 	if mood == Mood.HIT:
 		for i in 3:
 			var a := spin + TAU * i / 3.0
