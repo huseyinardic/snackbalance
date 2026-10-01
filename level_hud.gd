@@ -50,6 +50,7 @@ var _btn_home: UiKit.Btn
 var _pause_btn: UiKit.Btn
 var _pause: Control
 var _won := false
+var top_inset := 0.0   # çentik payı (main.gd oyun kamerasını buna göre yerleştirir)
 
 signal next_pressed
 signal retry_pressed
@@ -460,6 +461,7 @@ func _apply_top_inset() -> void:
 	var inset: float = float(safe.position.y) * get_viewport_rect().size.y / float(win.y)
 	if inset <= 0.0:
 		return
+	top_inset = inset
 	for c: Control in [_title, _progress, _hint, _pause_btn]:
 		c.offset_top += inset
 		c.offset_bottom += inset
@@ -564,7 +566,7 @@ func set_win_total(total: int, animate: bool, bamboo: int = -1) -> void:
 func set_ad_visible(on: bool) -> void:
 	_btn_ad.visible = on
 
-func show_lose(reason: String, offer_swap_ad: bool = false) -> void:
+func show_lose(reason: String, offer_swap_ad: bool = false, tip: String = "") -> void:
 	hide_hold()
 	_won = false
 	_clear_rewards()
@@ -573,7 +575,9 @@ func show_lose(reason: String, offer_swap_ad: bool = false) -> void:
 	_total.visible = false
 	_new_theme.visible = false
 	_goal.visible = false
-	_banner_sub.visible = false
+	_banner_sub.text = tip
+	_banner_sub.add_theme_color_override("font_color", GOLD)
+	_banner_sub.visible = tip != ""
 	_btn_ad.visible = offer_swap_ad
 	_btn_ad.text = "+1 Swap"
 	_btn_main.text = "Try again"

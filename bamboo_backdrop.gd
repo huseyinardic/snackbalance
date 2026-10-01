@@ -7,6 +7,7 @@ extends Node2D
 # yiyeceklerden hep soluk: hiçbir yiyecek zeminde kaybolmasın.
 
 const GROUND_TOP := 1062.0   # zeminin ortadaki yüksekliği (kütük tabanı ~1080)
+const OVERDRAW := 400.0      # oyun kamerası yaklaşınca ekran dışı da görünebilir: o kadar taşırarak çiz
 
 const MOODS := {
 	"day": {
@@ -78,7 +79,9 @@ func ground_y(x: float) -> float:
 func _draw() -> void:
 	var m: Dictionary = MOODS[mood]
 	var vs := get_viewport_rect().size
-	draw_texture_rect(_sky, Rect2(Vector2.ZERO, vs), false)
+	var x0 := -OVERDRAW
+	var x1 := vs.x + OVERDRAW
+	draw_texture_rect(_sky, Rect2(x0, -OVERDRAW, x1 - x0, vs.y + OVERDRAW), false)
 	var r: float = m["sun_r"]
 	draw_texture_rect(_glow, Rect2(m["sun_pos"] - Vector2(r, r), Vector2(r, r) * 2.0), false)
 
@@ -91,11 +94,11 @@ func _draw() -> void:
 
 	# arkadaki tepe
 	var hill := PackedVector2Array()
-	for i in 31:
-		var x := vs.x * i / 30.0
+	for i in 41:
+		var x := lerpf(x0, x1, i / 40.0)
 		hill.append(Vector2(x, 1000.0 + 22.0 * sin(x * 0.011 + 0.8) + 14.0 * sin(x * 0.027)))
-	hill.append(Vector2(vs.x, vs.y))
-	hill.append(Vector2(0, vs.y))
+	hill.append(Vector2(x1, vs.y))
+	hill.append(Vector2(x0, vs.y))
 	draw_colored_polygon(hill, m["hill"])
 
 	# yakın bambular (sadece kenarlarda, yaprakları içe uzanır)
@@ -107,23 +110,23 @@ func _draw() -> void:
 	var rim := PackedVector2Array()
 	# (geniş ekranda yamaç kenarlarda ekranın altına inebilir: y'ler ekran içinde
 	# tutulur, yoksa çokgen kendini keser ve çizilmez)
-	for i in 31:
-		var x := vs.x * i / 30.0
+	for i in 41:
+		var x := lerpf(x0, x1, i / 40.0)
 		gp.append(Vector2(x, minf(ground_y(x), vs.y - 1.0)))
 		rim.append(Vector2(x, minf(ground_y(x) + 4.0, vs.y - 1.0)))
-	gp.append(Vector2(vs.x, vs.y))
-	gp.append(Vector2(0, vs.y))
+	gp.append(Vector2(x1, vs.y))
+	gp.append(Vector2(x0, vs.y))
 	draw_colored_polygon(gp, m["ground"])
 	draw_polyline(rim, m["ground_hi"], 8.0, true)
 	# alt kısım biraz koyu: derinlik
 	for k in 3:
 		var band := PackedVector2Array()
 		var off := 90.0 + k * 45.0
-		for i in 31:
-			var x := vs.x * i / 30.0
+		for i in 41:
+			var x := lerpf(x0, x1, i / 40.0)
 			band.append(Vector2(x, minf(ground_y(x) + off, vs.y - 1.0)))
-		band.append(Vector2(vs.x, vs.y))
-		band.append(Vector2(0, vs.y))
+		band.append(Vector2(x1, vs.y))
+		band.append(Vector2(x0, vs.y))
 		draw_colored_polygon(band, Color(m["ground_dark"], 0.35))
 
 	if m["blanket"]:
@@ -147,10 +150,10 @@ func _draw() -> void:
 func _stalk(x: float, w: float, col: Color, node_col: Color, leaf_col: Color, leaf_len: float, seed: int, inward: float) -> void:
 	_rng.seed = seed * 131
 	var bottom := ground_y(x) + 10.0
-	draw_rect(Rect2(x - w / 2.0, -10.0, w, bottom + 10.0), col)
-	draw_rect(Rect2(x - w / 2.0 + w * 0.2, -10.0, w * 0.16, bottom + 10.0), Color(1, 1, 1, 0.12 * col.a))
+	draw_rect(Rect2(x - w / 2.0, -OVERDRAW, w, bottom + OVERDRAW), col)
+	draw_rect(Rect2(x - w / 2.0 + w * 0.2, -OVERDRAW, w * 0.16, bottom + OVERDRAW), Color(1, 1, 1, 0.12 * col.a))
 	var y := bottom - _rng.randf_range(70.0, 130.0)
-	while y > -40.0:
+	while y > -OVERDRAW:
 		draw_rect(Rect2(x - w / 2.0 - 1.5, y - 2.5, w + 3.0, 5.0), node_col)
 		if _rng.randf() < 0.6:
 			var side := inward if _rng.randf() < 0.75 else -inward

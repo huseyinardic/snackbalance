@@ -19,7 +19,7 @@ const HOVER_DROP := true
 
 const TILT_LIMIT_DEG := 33.0     # bu açıyı geçince oyun biter
 const HOLD_SECONDS := 3.0        # son yiyecekten sonra dengede tutma süresi
-const HOVER_Y := 250.0           # yiyeceğin bekleme yüksekliği (HOVER_DROP)
+const HOVER_Y := 340.0           # yiyeceğin bekleme yüksekliği (HOVER_DROP); en yüksek yığın bile ~730'u geçmiyor
 const DROP_START_SPEED := 300.0  # bırakınca ilk düşüş hızı (px/sn)
 const DROP_ACCEL := 2500.0       # düşerken hızlanma (px/sn²)
 const DROP_MAX_SPEED := 1300.0
@@ -36,6 +36,13 @@ const DEV_LONG_PRESS_MS := 600   # test sürümü: seviye başlığına uzun bas
 const SWAP_UNLOCK_LEVEL := 5     # Swap yardımcısı bu seviyeden itibaren (önce temel mekanik öğrenilsin)
 const MENU_ZOOM := 2.0           # menüde kamera pandaya bu kadar yaklaşır
 const CAMERA_SECONDS := 0.6      # menü <-> oyun kamera geçişi
+# Oyun kamerası ekran oranına göre yaklaşır: uzun telefonlarda fazla yükseklik eskiden
+# alttaki çime gidiyordu (20:9'da ekranın ~%34'ü). Fizik/boyutlar aynı, yalnız görüntü büyür.
+const PLAY_MAX_ZOOM := 1.15      # genişlik sınırı: çubuk (±280) ekranın ~%90'ı
+const PLAY_MIN_ZOOM := 0.85      # çok kısa/geniş ekranlarda (tablet) gerekirse uzaklaşabilir
+const PLAY_TOP := 205.0          # ekran y: üst göstergelerin (başlık, ilerleme, ipucu) altı
+const PLAY_BOTTOM := 230.0       # ekranın altından: canlar ve Swap düğmesinin üstü
+const FOOD_TOP := 50.0           # bekleyen yiyeceğin merkezinden üst kenarına (+ pay)
 
 enum Phase { MENU, PLAYING, HOLDING, WON, LOST }
 
@@ -69,6 +76,7 @@ var _t := 0.0
 var _dev_touch_index := -1       # test sürümü kısayolu için başlığa basan parmak
 var _dev_press_msec := 0
 var _swap_used := false          # bu seviyede kullanıldı mı (seviye başına 1)
+var _swap_hint := false          # Swap'ı varken kullanmadan kaybetti: düğme tekrar denemede parlasın
 var _swap_pressing := false      # Swap düğmesine basıldı, bırakılması bekleniyor
 var _drops := 0                  # bu seviyede kirişten düşen yiyecek (No drops ödülü)
 var _reward := 0                 # son kazanılan bambu (x2 için)
@@ -155,6 +163,8 @@ func _start_level(n: int, retry: bool = false) -> void:
 	_drops = 0
 	_doubled = false
 	_swap_used = false
+	if not retry:
+		_swap_hint = false
 	_swap_pressing = false
 	hud.set_play_visible(true)
 	_reset_field()
@@ -223,12 +233,18 @@ func _resume() -> void:
 	get_tree().paused = false
 	hud.show_pause(false)
 
-# Menüde kamera pandanın yüzüne yaklaşır (panda menünün vitrini); oyunda kamera
-# tam ekran ve dönüşümsüz — dokunuş x'i doğrudan dünya x'i olarak kullanılıyor.
+# Menüde kamera pandanın yüzüne yaklaşır (panda menünün vitrini). Oyunda bekleyen
+# yiyecekten çubuğa kadarki şerit, üst göstergelerle alttaki canlar/Swap arasına
+# ortalanır ve sığdığı kadar (en çok PLAY_MAX_ZOOM) büyütülür. Dokunuşlar
+# _world_x ile dünya koordinatına çevrilir.
 func _set_camera(menu_view: bool, instant: bool) -> void:
 	var vs := get_viewport_rect().size
-	var pos := vs / 2.0
-	var z := 1.0
+	var top := PLAY_TOP + hud.top_inset
+	var bottom := vs.y - PLAY_BOTTOM
+	var span := pivot.position.y - (HOVER_Y - FOOD_TOP)
+	var z := clampf((bottom - top) / span, PLAY_MIN_ZOOM, PLAY_MAX_ZOOM)
+	var band_top := top + (bottom - top - span * z) / 2.0   # şeridin üstünün ekrandaki yeri
+	var pos := Vector2(pivot.position.x, HOVER_Y - FOOD_TOP - (band_top - vs.y / 2.0) / z)
 	if menu_view:
 		z = MENU_ZOOM
 		var head_y := pivot.position.y + panda.position.y - 68.0
@@ -285,7 +301,7 @@ func _process(delta: float) -> void:
 	var deg := rad_to_deg(_beam_angle())
 	_t += delta
 	hud.set_swap(level >= SWAP_UNLOCK_LEVEL and (phase == Phase.PLAYING or phase == Phase.HOLDING),
-		GameData.swaps, _can_swap(), level == SWAP_UNLOCK_LEVEL and not _swap_used)
+		GameData.swaps, _can_swap(), (level == SWAP_UNLOCK_LEVEL or _swap_hint) and not _swap_used)
 
 	if phase == Phase.WON or phase == Phase.LOST:
 		return
@@ -346,6 +362,7 @@ func _mark_lost_foods() -> void:
 
 func _win() -> void:
 	phase = Phase.WON
+	_swap_hint = false
 	_set_guide(false)
 	var had_sunset := GameData.sunset_unlocked()
 	GameData.set_level(level + 1)
@@ -367,7 +384,12 @@ func _lose(reason: String) -> void:
 		current_food.queue_free()
 	current_food = null
 	_set_guide(false)
-	hud.show_lose(reason, level >= SWAP_UNLOCK_LEVEL and Ads.rewarded_ready())
+	# Swap'ı varken kullanmadan kaybeden oyuncuya reklam değil ipucu: "Swap'ını kullan".
+	var tip := ""
+	if level >= SWAP_UNLOCK_LEVEL and GameData.swaps > 0 and not _swap_used:
+		tip = "Tip: Swap a hard food!"
+		_swap_hint = true
+	hud.show_lose(reason, _offer_swap_ad(), tip)
 	Input.vibrate_handheld(80)
 
 # Kiriş kritik açıya yaklaştıkça kızarır ve giderek hızlanarak yanıp söner —
@@ -405,6 +427,7 @@ func _try_swap() -> void:
 	food_container.add_child(f)
 	current_food = f
 	_swap_used = true
+	_swap_hint = false
 	GameData.use_swap()
 	hud.set_icon_kind(f.get_meta("seq"), Food.Kind.SANDWICH)
 	# gövdeyi ölçeklemek fizikte sorun çıkarır; parlayarak belirsin
@@ -444,12 +467,17 @@ func _on_next() -> void:
 		if phase == Phase.WON and level == n - 1:
 			_start_level(n))
 
+# "+1 Swap" teklifi yalnız Swap'ı bitmiş oyuncuya: elinde Swap varken 4.'sü değersiz
+# (seviye başına zaten 1 kullanılır) ve değersiz teklif reklam düğmesini ucuzlatır.
+func _offer_swap_ad() -> bool:
+	return level >= SWAP_UNLOCK_LEVEL and GameData.swaps == 0 and Ads.rewarded_ready()
+
 # Ödüllü reklam sonradan yüklendiyse kartta teklif belirsin (ya da kullanıldıysa gizlensin).
 func _refresh_ad_offer() -> void:
 	if phase == Phase.WON:
 		hud.set_ad_visible(not _doubled and Ads.rewarded_ready())
 	elif phase == Phase.LOST:
-		hud.set_ad_visible(level >= SWAP_UNLOCK_LEVEL and Ads.rewarded_ready())
+		hud.set_ad_visible(_offer_swap_ad())
 
 # Swap düğmesi. (Kart ve menü düğmeleri dokunuşu kendileri yakalar — UiKit.Btn.) true = dokunuş arayüze gitti,
 # oyun (yiyecek tutma/bırakma, tekrar dene) görmesin.
@@ -519,8 +547,7 @@ func _steer(delta: float) -> void:
 	# ve kirişin ucuna (MAX_LANE_OFFSET) kadar gidebilir; parmak kalkınca durur.
 	if not _holding or not _is_steerable(current_food):
 		return
-	var screen_w := get_viewport_rect().size.x
-	var dir: float = sign(_touch_x - screen_w / 2.0)
+	var dir: float = sign(_touch_x - pivot.position.x)
 	var target_x: float = pivot.position.x + dir * MAX_LANE_OFFSET
 	var dx: float = move_toward(current_food.position.x, target_x, STEER_SPEED * delta) - current_food.position.x
 	if dx != 0.0:
@@ -559,14 +586,14 @@ func _unhandled_input(event: InputEvent) -> void:
 			_release()
 	elif event is InputEventScreenDrag:
 		if event.index == _active_touch_index:
-			_touch_x = event.position.x
+			_touch_x = _world_x(event.position.x)
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			_press(event.position.x)
 		else:
 			_release()
 	elif event is InputEventMouseMotion and _holding:
-		_touch_x = event.position.x
+		_touch_x = _world_x(event.position.x)
 
 # Yalnız test (debug) sürümünde: seviye başlığına dokun = sonraki seviye,
 # uzun bas = önceki seviye, oyun sırasında ikinci parmak = seviyeyi yeniden başlat.
@@ -597,7 +624,11 @@ func _press(x: float) -> void:
 	if phase == Phase.WON or phase == Phase.LOST:
 		return   # kartın düğmeleri karar verir (Next / Try again / Home)
 	_holding = true
-	_touch_x = x
+	_touch_x = _world_x(x)
+
+# Ekrandaki dokunuş x'i -> dünya x'i (oyun kamerası yakınlaşmış olabilir).
+func _world_x(screen_x: float) -> float:
+	return (get_canvas_transform().affine_inverse() * Vector2(screen_x, 0.0)).x
 
 func _release() -> void:
 	if not _holding:
@@ -706,7 +737,7 @@ func _panda_hit(food: Food) -> void:
 
 	panda_hits += 1
 	panda.set_hits(panda_hits)
-	hud.lose_life(MAX_PANDA_HITS - panda_hits, panda.to_global(Vector2(0, -68)))
+	hud.lose_life(MAX_PANDA_HITS - panda_hits, panda.get_global_transform_with_canvas() * Vector2(0, -68))
 	if panda_hits >= MAX_PANDA_HITS:
 		_lose("Ouch! Poor panda!")
 
