@@ -32,6 +32,7 @@ class Btn extends Control:
 	var badge := false            # sağ üstte kırmızı nokta
 	var enabled := true
 	var on_tap := Callable()
+	var sound := "click"          # "" = düğme kendi sesini çalar (ör. satın alma, giyme)
 	var _down := -2               # -2 yok, -1 fare, >=0 dokunuş parmağı
 
 	func _init() -> void:
@@ -66,6 +67,8 @@ class Btn extends Control:
 			get_viewport().set_input_as_handled()
 			if _hit(event.position):
 				if enabled and on_tap.is_valid():
+					if sound != "":
+						Sfx.play(sound, -2.0, 1.0, 0.05)
 					on_tap.call()
 				elif not enabled:
 					_shake()
@@ -292,6 +295,17 @@ static func wardrobe(ci: CanvasItem, c: Vector2, s: float) -> void:
 	ci.draw_set_transform_matrix(xf)
 	Accessories.draw(ci, "bow")
 	ci.draw_set_transform(Vector2.ZERO)
+
+# Ayarlar: dişli çark.
+static func gear(ci: CanvasItem, c: Vector2, s: float) -> void:
+	var r := s * 0.3
+	var pts := PackedVector2Array()
+	for i in 32:
+		var a := TAU * i / 32.0
+		var tooth := 1.0 if (i / 2) % 2 == 0 else 0.0
+		pts.append(c + Vector2.from_angle(a + TAU / 64.0) * (r + tooth * s * 0.09))
+	ci.draw_colored_polygon(pts, Color.WHITE)
+	ci.draw_circle(c, r * 0.42, Color(0.3, 0.42, 0.3))
 
 static func close(ci: CanvasItem, c: Vector2, s: float) -> void:
 	for d in [Vector2(1, 1), Vector2(1, -1)]:

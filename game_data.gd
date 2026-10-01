@@ -34,6 +34,9 @@ var last_day := ""               # en son oynanan gün (seri)
 var claimed_day := ""            # günlük ödülün en son alındığı gün
 var sunset_seen := false         # "yeni tema" kırmızı noktası görüldü mü
 var is_new := true               # kayıt dosyası yoktu: ilk açılış (menü atlanır, direkt 1. seviye)
+var music_on := true
+var sfx_on := true
+var vibration_on := true
 
 func _ready() -> void:
 	load_data()
@@ -61,6 +64,9 @@ func load_data() -> void:
 	streak = int(cfg.get_value("daily", "streak", 0))
 	last_day = cfg.get_value("daily", "last_day", "")
 	claimed_day = cfg.get_value("daily", "claimed_day", "")
+	music_on = cfg.get_value("settings", "music", true)
+	sfx_on = cfg.get_value("settings", "sfx", true)
+	vibration_on = cfg.get_value("settings", "vibration", true)
 
 func save() -> void:
 	var cfg := ConfigFile.new()
@@ -76,8 +82,15 @@ func save() -> void:
 	cfg.set_value("daily", "streak", streak)
 	cfg.set_value("daily", "last_day", last_day)
 	cfg.set_value("daily", "claimed_day", claimed_day)
+	cfg.set_value("settings", "music", music_on)
+	cfg.set_value("settings", "sfx", sfx_on)
+	cfg.set_value("settings", "vibration", vibration_on)
 	cfg.save(SAVE_PATH)
 	is_new = false
+
+func vibrate(ms: int) -> void:
+	if vibration_on:
+		Input.vibrate_handheld(ms)
 
 # --- ilerleme ---
 

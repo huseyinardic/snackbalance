@@ -171,6 +171,8 @@ func _start_level(n: int, retry: bool = false) -> void:
 	hud.setup_level(level, _level_data["foods"], _level_data["hint"])
 	hud.reset_lives(MAX_PANDA_HITS)
 	var intro: float = 0.35 if retry else INTRO_SECONDS
+	if not retry:
+		Sfx.play("level_start", -4.0)
 	hud.show_intro(level, "" if retry else _level_data["hint"], -1 if retry else Levels.new_kind(level), intro)
 	_spawn_wait = intro + 0.25
 
@@ -359,6 +361,7 @@ func _mark_lost_foods() -> void:
 			if local.y > 30.0 or absf(local.x) > 320.0:
 				f.set_meta("lost", true)
 				_drops += 1
+				Sfx.play("fall_off", -4.0, 1.0, 0.08)
 
 func _win() -> void:
 	phase = Phase.WON
@@ -376,7 +379,7 @@ func _win() -> void:
 	hud.show_win(level, rewards, _reward, panda_hits == 0 and _drops == 0, Accessories.next_goal(GameData.owned),
 		GameData.bamboo, GameData.sunset_unlocked() and not had_sunset, Ads.rewarded_ready())
 	panda.celebrate()
-	Input.vibrate_handheld(60)
+	GameData.vibrate(60)
 
 func _lose(reason: String) -> void:
 	phase = Phase.LOST
@@ -390,7 +393,8 @@ func _lose(reason: String) -> void:
 		tip = "Tip: Swap a hard food!"
 		_swap_hint = true
 	hud.show_lose(reason, _offer_swap_ad(), tip)
-	Input.vibrate_handheld(80)
+	Sfx.play("lose")
+	GameData.vibrate(80)
 
 # Kiriş kritik açıya yaklaştıkça kızarır ve giderek hızlanarak yanıp söner —
 # oyuncu devrilmeden önce "tehlike" hissini alsın.
@@ -433,7 +437,8 @@ func _try_swap() -> void:
 	# gövdeyi ölçeklemek fizikte sorun çıkarır; parlayarak belirsin
 	f.modulate = Color(2.2, 2.2, 2.2)
 	create_tween().tween_property(f, "modulate", Color.WHITE, 0.35)
-	Input.vibrate_handheld(30)
+	Sfx.play("swap")
+	GameData.vibrate(30)
 
 # --- reklamlar (ads.gd) ---
 
@@ -456,6 +461,7 @@ func _on_ad_double() -> void:
 		_doubled = true
 		GameData.add_bamboo(_reward)
 		hud.set_win_total(_reward * 2, true, GameData.bamboo)
+		Sfx.play("reward_big")
 		hud.set_ad_visible(false))
 
 # "Next": kurallar uygunsa (Ads.after_level) önce geçiş reklamı, sonra sonraki seviye.
@@ -661,6 +667,7 @@ func _spawn_food() -> void:
 	current_food = f
 	_dropping = false
 	_spawn_wait = SPAWN_DELAY
+	Sfx.play("pop", -9.0, 1.0, 0.06)
 
 # Seviyenin sıradaki yiyeceği; liste bittiyse (bir yiyecek düştüğü ya da
 # pandaya çarptığı için ek parça gerekiyorsa) seviyenin havuzundan.
@@ -736,6 +743,8 @@ func _panda_hit(food: Food) -> void:
 	fade.tween_callback(food.queue_free)
 
 	panda_hits += 1
+	Sfx.play("bonk")
+	GameData.vibrate(50)
 	panda.set_hits(panda_hits)
 	hud.lose_life(MAX_PANDA_HITS - panda_hits, panda.get_global_transform_with_canvas() * Vector2(0, -68))
 	if panda_hits >= MAX_PANDA_HITS:
@@ -751,6 +760,10 @@ func _land_food(body: Food) -> void:
 	body.linear_velocity = Vector2.ZERO
 	body.angular_velocity = 0.0
 	# dönme serbest: düz yiyecekler kendiliğinden devrilmez, yuvarlaklar gerçekten yuvarlanır
+
+	# konma sesi yiyeceğin ağırlığına göre: karpuz tok ve derin, elma hafif
+	var snd := "land_heavy" if body.mass >= 1.5 else ("land_mid" if body.mass >= 0.75 else "land_light")
+	Sfx.play(snd, -2.0, 1.0, 0.06)
 
 	if body == current_food:
 		current_food = null

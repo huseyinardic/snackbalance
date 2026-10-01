@@ -15,7 +15,10 @@ const SWAP_UNLOCK_LEVEL := 5     # main.gd ile aynı: Swap'tan önce günlük Sw
 
 var _title: VBoxContainer
 var _pill: BambooPill
+var _gear: UiKit.Btn
+var _settings: Control
 var _privacy: UiKit.Btn
+var _toggles := {}   # ayar adı -> düğme
 var _level_label: Label
 var _play: UiKit.Btn
 var _btn_wardrobe: UiKit.Btn
@@ -195,6 +198,7 @@ func _ready() -> void:
 	_wardrobe = _build_wardrobe()
 	_themes = _build_themes()
 	_daily = _build_daily()
+	_settings = _build_settings()
 	GameData.bamboo_changed.connect(func(v: int): _pill.set_value(v, true))
 	_apply_top_inset()
 
@@ -225,15 +229,15 @@ func _build_home() -> void:
 	_pill.offset_bottom = 96.0
 	add_child(_pill)
 
-	# AB'de zorunlu: reklam onayını sonradan değiştirme (Ads.privacy_options_required)
-	_privacy = UiKit.btn("Privacy", Color(0.45, 0.55, 0.45), 150, 62, 26, func(): Ads.show_privacy_options())
-	_privacy.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	_privacy.offset_left = 20.0
-	_privacy.offset_right = 170.0
-	_privacy.offset_top = 30.0
-	_privacy.offset_bottom = 92.0
-	_privacy.visible = false
-	add_child(_privacy)
+	# sol üstte Ayarlar (müzik, ses, titreşim; AB'de reklam gizlilik seçenekleri)
+	_gear = UiKit.btn("", Color(0.36, 0.6, 0.34), 76, 76, 26, _open_settings, UiKit.gear)
+	_gear.icon_size = 70.0
+	_gear.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	_gear.offset_left = 20.0
+	_gear.offset_right = 96.0
+	_gear.offset_top = 24.0
+	_gear.offset_bottom = 100.0
+	add_child(_gear)
 	Ads.consent_ready.connect(refresh)
 
 	_level_label = UiKit.label("", UiKit.BOLD, 38, Color.WHITE)
@@ -282,7 +286,7 @@ func _build_home() -> void:
 # Açılış: main.gd kamerayı pandaya yaklaştırırken çağırır.
 func open(show_daily: bool) -> void:
 	visible = true
-	for p in [_wardrobe, _themes, _daily]:
+	for p in [_wardrobe, _themes, _daily, _settings]:
 		p.visible = false
 	GameData.refresh_day()
 	refresh()
@@ -302,7 +306,7 @@ func back() -> bool:
 	if _wardrobe.visible:
 		_close_wardrobe()
 		return true
-	for p in [_themes, _daily]:
+	for p in [_themes, _daily, _settings]:
 		if p.visible:
 			_close_panel(p)
 			return true
@@ -310,7 +314,6 @@ func back() -> bool:
 
 func refresh() -> void:
 	_level_label.text = "Level %d" % GameData.level
-	_privacy.visible = Ads.privacy_options_required()
 	_btn_daily.badge = GameData.daily_available()
 	_btn_themes.badge = GameData.new_theme_badge()
 	var goal := Accessories.next_goal(GameData.owned)
@@ -414,7 +417,10 @@ func _build_wardrobe() -> Control:
 		c.size = c.custom_minimum_size
 		c.setup(a)
 		var id: String = a["id"]
-		c.on_tap = func(): _select_item(id)
+		c.sound = ""
+		c.on_tap = func():
+			_select_item(id)
+			Sfx.play("equip")   # deneme: kumaş "fıp" + pop
 		grid.add_child(c)
 		_cells.append(c)
 	var row := HBoxContainer.new()
@@ -426,6 +432,7 @@ func _build_wardrobe() -> Control:
 	_item_name.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(_item_name)
 	_action = UiKit.btn("", UiKit.GREEN, 340, 96, 38, _on_action)
+	_action.sound = ""   # kendi sesi: satın alma ya da giyme
 	row.add_child(_action)
 	box.add_child(row)
 	return parts[0]
@@ -482,9 +489,11 @@ func _on_action() -> void:
 	var id := _selected
 	if id in GameData.owned:
 		GameData.toggle_wear(id)
+		Sfx.play("equip")
 		outfit_preview.emit(GameData.outfit.duplicate())
 	elif GameData.buy(id):
-		Input.vibrate_handheld(40)
+		GameData.vibrate(40)
+		Sfx.play("buy")
 		outfit_preview.emit(GameData.outfit.duplicate())
 		_celebrate(_action)
 	_select_item(id)
@@ -606,7 +615,8 @@ func _on_claim() -> void:
 	if not GameData.daily_available():
 		return
 	var r := GameData.claim_daily()
-	Input.vibrate_handheld(40)
+	GameData.vibrate(40)
+	Sfx.play("buy")
 	if r["crown"]:
 		outfit_preview.emit(GameData.outfit.duplicate())
 	_refresh_daily()
@@ -617,6 +627,56 @@ func _on_claim() -> void:
 		if _daily.visible:
 			_close_panel(_daily))
 
+# --- ayarlar ---
+
+func _build_settings() -> Control:
+	var parts := _panel(560.0, false, func(): _close_panel(_settings))
+	var box: VBoxContainer = parts[1]
+	_panel_title(parts[2], "Settings")
+	for d in [["music", "Music"], ["sfx", "Sounds"], ["vibration", "Vibration"]]:
+		var key: String = d[0]
+		var b := UiKit.btn("", UiKit.GREEN, 400, 92, 36, func(): _toggle(key))
+		b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		b.set_meta("label", d[1])
+		box.add_child(b)
+		_toggles[key] = b
+	# AB'de zorunlu: reklam onayını sonradan değiştirme (Ads.privacy_options_required)
+	_privacy = UiKit.btn("Privacy", Color(0.45, 0.55, 0.45), 400, 84, 32, func(): Ads.show_privacy_options())
+	_privacy.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(_privacy)
+	return parts[0]
+
+func _open_settings() -> void:
+	_refresh_settings()
+	_show_panel(_settings, false)
+
+func _toggle(key: String) -> void:
+	match key:
+		"music":
+			GameData.music_on = not GameData.music_on
+			Sfx.apply_settings()
+		"sfx":
+			GameData.sfx_on = not GameData.sfx_on
+		"vibration":
+			GameData.vibration_on = not GameData.vibration_on
+			GameData.vibrate(40)
+	GameData.save()
+	_refresh_settings()
+
+func _refresh_settings() -> void:
+	var state := {"music": GameData.music_on, "sfx": GameData.sfx_on, "vibration": GameData.vibration_on}
+	for key in _toggles:
+		var b: UiKit.Btn = _toggles[key]
+		b.text = "%s: %s" % [b.get_meta("label"), "On" if state[key] else "Off"]
+		b.color = UiKit.GREEN if state[key] else UiKit.GREY
+		b.queue_redraw()
+	_privacy.visible = Ads.privacy_options_required()
+	# kart yüksekliği: Privacy yalnız AB'de görünür, yoksa altta boşluk kalmasın
+	var card: Control = _settings.get_child(1)
+	var h := 540.0 if _privacy.visible else 440.0
+	card.offset_top = -h / 2.0
+	card.offset_bottom = h / 2.0
+
 # Çentikli telefonlarda üst öğeleri durum çubuğunun altına it.
 func _apply_top_inset() -> void:
 	var safe := DisplayServer.get_display_safe_area()
@@ -626,7 +686,7 @@ func _apply_top_inset() -> void:
 	var inset: float = float(safe.position.y) * get_viewport_rect().size.y / float(win.y)
 	if inset <= 0.0:
 		return
-	for c: Control in [_pill, _privacy]:
+	for c: Control in [_pill, _gear]:
 		c.offset_top += inset
 		c.offset_bottom += inset
 	_title.offset_top += inset

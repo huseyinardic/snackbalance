@@ -507,6 +507,7 @@ func show_hold(seconds_left: int) -> void:
 	_hold_box.visible = true
 	if seconds_left != _hold_shown:
 		_hold_shown = seconds_left
+		Sfx.play("tick_last" if seconds_left == 1 else "tick")
 		_hold_num.text = str(seconds_left)
 		_hold_num.pivot_offset = _hold_num.size / 2.0
 		_hold_num.scale = Vector2(1.6, 1.6)
@@ -551,6 +552,8 @@ func show_win(level: int, rewards: Array, total: int, perfect: bool, goal: Dicti
 		t.tween_property(_perfect, "scale", Vector2.ONE, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_confetti.position = Vector2(get_viewport_rect().size.x / 2.0, -20.0)
 	_confetti.restart()
+	Sfx.play("win")
+	Sfx.play_later(0.75, "reward", -3.0)
 
 # x2 alınınca toplam büyüyerek güncellenir, sıradaki hedef çubuğu da.
 func set_win_total(total: int, animate: bool, bamboo: int = -1) -> void:
@@ -660,6 +663,7 @@ func lose_life(lives_left: int, from: Vector2) -> void:
 	_fly_tween.tween_callback(func():
 		_fly_heart.visible = false
 		_lives.lives = lives_left
+		Sfx.play("heart_break", -3.0)
 		_lives.shake()
 		_lives.queue_redraw())
 

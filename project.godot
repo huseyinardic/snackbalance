@@ -24,6 +24,7 @@ config/features=PackedStringArray("4.7", "Mobile")
 
 GameData="*res://game_data.gd"
 Ads="*res://ads.gd"
+Sfx="*res://audio.gd"
 
 [display]
 
