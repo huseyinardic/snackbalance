@@ -15,6 +15,7 @@ const SWAP_UNLOCK_LEVEL := 5     # main.gd ile aynı: Swap'tan önce günlük Sw
 
 var _title: VBoxContainer
 var _pill: BambooPill
+var _privacy: UiKit.Btn
 var _level_label: Label
 var _play: UiKit.Btn
 var _btn_wardrobe: UiKit.Btn
@@ -224,6 +225,17 @@ func _build_home() -> void:
 	_pill.offset_bottom = 96.0
 	add_child(_pill)
 
+	# AB'de zorunlu: reklam onayını sonradan değiştirme (Ads.privacy_options_required)
+	_privacy = UiKit.btn("Privacy", Color(0.45, 0.55, 0.45), 150, 62, 26, func(): Ads.show_privacy_options())
+	_privacy.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	_privacy.offset_left = 20.0
+	_privacy.offset_right = 170.0
+	_privacy.offset_top = 30.0
+	_privacy.offset_bottom = 92.0
+	_privacy.visible = false
+	add_child(_privacy)
+	Ads.consent_ready.connect(refresh)
+
 	_level_label = UiKit.label("", UiKit.BOLD, 38, Color.WHITE)
 	_level_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	_level_label.offset_top = -410.0
@@ -298,6 +310,7 @@ func back() -> bool:
 
 func refresh() -> void:
 	_level_label.text = "Level %d" % GameData.level
+	_privacy.visible = Ads.privacy_options_required()
 	_btn_daily.badge = GameData.daily_available()
 	_btn_themes.badge = GameData.new_theme_badge()
 	var goal := Accessories.next_goal(GameData.owned)
@@ -613,7 +626,8 @@ func _apply_top_inset() -> void:
 	var inset: float = float(safe.position.y) * get_viewport_rect().size.y / float(win.y)
 	if inset <= 0.0:
 		return
-	_pill.offset_top += inset
-	_pill.offset_bottom += inset
+	for c: Control in [_pill, _privacy]:
+		c.offset_top += inset
+		c.offset_bottom += inset
 	_title.offset_top += inset
 	_title.offset_bottom += inset

@@ -98,9 +98,13 @@ func _ready() -> void:
 	move_child(_guide, food_container.get_index())   # yiyeceklerin altında çizilsin
 	hud = LevelHud.new()
 	$UI.add_child(hud)
-	hud.next_pressed.connect(func(): _start_level(level + 1))
-	hud.retry_pressed.connect(func(): _start_level(level, true))
-	hud.home_pressed.connect(_go_home)
+	hud.next_pressed.connect(_on_next)
+	hud.retry_pressed.connect(func():
+		if not Ads.busy():
+			_start_level(level, true))
+	hud.home_pressed.connect(func():
+		if not Ads.busy():
+			_go_home())
 	hud.double_pressed.connect(_on_ad_double)
 	hud.swap_ad_pressed.connect(_on_ad_swap)
 	hud.pause_pressed.connect(_pause)
@@ -110,6 +114,7 @@ func _ready() -> void:
 	menu.play_pressed.connect(_on_play)
 	menu.outfit_preview.connect(func(o: Dictionary): panda.set_outfit(o))
 	menu.theme_picked.connect(func(t: String): backdrop.set_mood(t))
+	Ads.rewarded_changed.connect(_refresh_ad_offer)
 	cam = Camera2D.new()
 	add_child(cam)
 	cam.make_current()
@@ -206,7 +211,7 @@ func _go_home() -> void:
 	_enter_menu(false)
 
 func _pause() -> void:
-	if phase != Phase.PLAYING and phase != Phase.HOLDING:
+	if (phase != Phase.PLAYING and phase != Phase.HOLDING) or Ads.busy():
 		return
 	_holding = false
 	_active_touch_index = -1
@@ -251,7 +256,7 @@ func _notification(what: int) -> void:
 		_resume()
 	elif phase == Phase.PLAYING or phase == Phase.HOLDING:
 		_pause()
-	else:
+	elif not Ads.busy():
 		_go_home()
 
 func _target() -> int:
@@ -349,9 +354,10 @@ func _win() -> void:
 	for r in rewards:
 		_reward += r[1]
 	GameData.add_bamboo(_reward)
+	Ads.level_won()
 	beam_visual.modulate = Color.WHITE
 	hud.show_win(level, rewards, _reward, panda_hits == 0 and _drops == 0, Accessories.next_goal(GameData.owned),
-		GameData.bamboo, GameData.sunset_unlocked() and not had_sunset, true)
+		GameData.bamboo, GameData.sunset_unlocked() and not had_sunset, Ads.rewarded_ready())
 	panda.celebrate()
 	Input.vibrate_handheld(60)
 
@@ -361,7 +367,7 @@ func _lose(reason: String) -> void:
 		current_food.queue_free()
 	current_food = null
 	_set_guide(false)
-	hud.show_lose(reason, level >= SWAP_UNLOCK_LEVEL)
+	hud.show_lose(reason, level >= SWAP_UNLOCK_LEVEL and Ads.rewarded_ready())
 	Input.vibrate_handheld(80)
 
 # Kiriş kritik açıya yaklaştıkça kızarır ve giderek hızlanarak yanıp söner —
@@ -406,20 +412,44 @@ func _try_swap() -> void:
 	create_tween().tween_property(f, "modulate", Color.WHITE, 0.35)
 	Input.vibrate_handheld(30)
 
-# Kaybedince "reklam izle, +1 Swap ile tekrar dene". AdMob henüz bağlı değil
-# (C5) — şimdilik ödül doğrudan verilir; reklam gelince yalnız bu iki fonksiyon değişir.
+# --- reklamlar (ads.gd) ---
+
+# Kaybedince "reklam izle, +1 Swap ile tekrar dene".
 func _on_ad_swap() -> void:
-	GameData.add_swaps(1)
-	_start_level(level, true)
+	if phase != Phase.LOST or Ads.busy():
+		return
+	Ads.show_rewarded(func(earned: bool):
+		if earned and phase == Phase.LOST:
+			GameData.add_swaps(1)
+			_start_level(level, true))
 
 # Kazanınca "reklam izle, bambuyu ikiye katla" (seviye başına bir kez).
 func _on_ad_double() -> void:
-	if _doubled or phase != Phase.WON:
+	if _doubled or phase != Phase.WON or Ads.busy():
 		return
-	_doubled = true
-	GameData.add_bamboo(_reward)
-	hud.set_win_total(_reward * 2, true, GameData.bamboo)
-	hud.hide_ad_button()
+	Ads.show_rewarded(func(earned: bool):
+		if not earned or _doubled or phase != Phase.WON:
+			return
+		_doubled = true
+		GameData.add_bamboo(_reward)
+		hud.set_win_total(_reward * 2, true, GameData.bamboo)
+		hud.set_ad_visible(false))
+
+# "Next": kurallar uygunsa (Ads.after_level) önce geçiş reklamı, sonra sonraki seviye.
+func _on_next() -> void:
+	if phase != Phase.WON or Ads.busy():
+		return
+	var n := level + 1
+	Ads.after_level(level, func():
+		if phase == Phase.WON and level == n - 1:
+			_start_level(n))
+
+# Ödüllü reklam sonradan yüklendiyse kartta teklif belirsin (ya da kullanıldıysa gizlensin).
+func _refresh_ad_offer() -> void:
+	if phase == Phase.WON:
+		hud.set_ad_visible(not _doubled and Ads.rewarded_ready())
+	elif phase == Phase.LOST:
+		hud.set_ad_visible(level >= SWAP_UNLOCK_LEVEL and Ads.rewarded_ready())
 
 # Swap düğmesi. (Kart ve menü düğmeleri dokunuşu kendileri yakalar — UiKit.Btn.) true = dokunuş arayüze gitti,
 # oyun (yiyecek tutma/bırakma, tekrar dene) görmesin.

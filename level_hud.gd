@@ -561,8 +561,8 @@ func set_win_total(total: int, animate: bool, bamboo: int = -1) -> void:
 		_total.scale = Vector2(1.5, 1.5)
 		create_tween().tween_property(_total, "scale", Vector2.ONE, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
-func hide_ad_button() -> void:
-	_btn_ad.visible = false
+func set_ad_visible(on: bool) -> void:
+	_btn_ad.visible = on
 
 func show_lose(reason: String, offer_swap_ad: bool = false) -> void:
 	hide_hold()

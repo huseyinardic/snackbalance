@@ -8,6 +8,11 @@
 
 config_version=5
 
+[admob]
+
+general/android/app_id="ca-app-pub-4752797500144210~1006701110"
+general/ios/enabled=false
+
 [application]
 
 config/name="Snack Balance Prototype"
@@ -18,6 +23,7 @@ config/features=PackedStringArray("4.7", "Mobile")
 [autoload]
 
 GameData="*res://game_data.gd"
+Ads="*res://ads.gd"
 
 [display]
 
@@ -27,9 +33,17 @@ window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 window/handheld/orientation=1
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/admob/plugin.cfg")
+
 [input_devices]
 
 pointing/emulate_mouse_from_touch=false
+
+[internationalization]
+
+locale/translations=PackedStringArray("res://addons/admob/gdscript/sample/translations/admob_sample.en.translation", "res://addons/admob/gdscript/sample/translations/admob_sample.pt_BR.translation", "res://addons/admob/gdscript/sample/translations/admob_sample.es.translation", "res://addons/admob/gdscript/sample/translations/admob_sample.zh_CN.translation", "res://addons/admob/gdscript/sample/translations/admob_sample.ja.translation")
 
 [rendering]
 
