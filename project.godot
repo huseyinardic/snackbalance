@@ -15,7 +15,7 @@ general/ios/enabled=false
 
 [application]
 
-config/name="Snack Balance Prototype"
+config/name="Snack Balance"
 run/main_scene="res://main.tscn"
 config/quit_on_go_back=false
 config/features=PackedStringArray("4.7", "Mobile")
