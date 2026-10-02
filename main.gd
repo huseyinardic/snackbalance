@@ -83,6 +83,7 @@ var _reward := 0                 # son kazanılan bambu (x2 için)
 var _doubled := false
 var _first_menu := true          # günlük ödül penceresi yalnız ilk menü açılışında kendiliğinden
 var _cam_tween: Tween
+var _level_msec := 0             # analitik: seviyenin başladığı an (süre)
 
 # Bekleyen yiyeceğin nereye ineceğini gösteren kesikli çizgi; pandaya
 # denk geliyorsa kırmızı olur.
@@ -156,6 +157,8 @@ func _start_level(n: int, retry: bool = false) -> void:
 	level = maxi(n, 1)
 	GameData.set_level(level)
 	_level_data = Levels.get_level(level)
+	_level_msec = Time.get_ticks_msec()
+	Analytics.log_event("level_start", {"level": level, "retry": 1 if retry else 0})
 	_rng.seed = level * 104729   # kirişten düşen yiyeceğin yedeği de her denemede aynı gelsin
 	_seq_index = 0
 	phase = Phase.PLAYING
@@ -309,7 +312,7 @@ func _process(delta: float) -> void:
 		return
 
 	if abs(deg) >= TILT_LIMIT_DEG:
-		_lose("Out of balance!")
+		_lose("Out of balance!", "tilt")
 		return
 	_update_tilt_warning(absf(deg))
 	# panda bekleyen/düşen yiyeceği gözüyle izler, kiriş tehlikedeyse endişelenir
@@ -375,14 +378,32 @@ func _win() -> void:
 		_reward += r[1]
 	GameData.add_bamboo(_reward)
 	Ads.level_won()
+	Analytics.log_event("level_win", {
+		"level": level,
+		"duration_sec": _level_seconds(),
+		"panda_hits": panda_hits,
+		"drops": _drops,
+		"swap_used": 1 if _swap_used else 0,
+		"hard": 1 if Levels.is_peak(level) else 0,
+		"reward": _reward,
+	})
 	beam_visual.modulate = Color.WHITE
 	hud.show_win(level, rewards, _reward, panda_hits == 0 and _drops == 0, Accessories.next_goal(GameData.owned),
 		GameData.bamboo, GameData.sunset_unlocked() and not had_sunset, Ads.rewarded_ready())
 	panda.celebrate()
 	GameData.vibrate(60)
 
-func _lose(reason: String) -> void:
+# cause: analitik için kısa kod ("tilt" = devrildi, "panda" = pandaya 2. vuruş)
+func _lose(reason: String, cause: String) -> void:
 	phase = Phase.LOST
+	Analytics.log_event("level_fail", {
+		"level": level,
+		"cause": cause,
+		"duration_sec": _level_seconds(),
+		"placed": mini(_placed_count(), _target()),
+		"target": _target(),
+		"swap_used": 1 if _swap_used else 0,
+	})
 	if current_food and current_food.freeze:
 		current_food.queue_free()
 	current_food = null
@@ -433,12 +454,16 @@ func _try_swap() -> void:
 	_swap_used = true
 	_swap_hint = false
 	GameData.use_swap()
+	Analytics.log_event("swap_used", {"level": level, "food": old.kind, "swaps_left": GameData.swaps})
 	hud.set_icon_kind(f.get_meta("seq"), Food.Kind.SANDWICH)
 	# gövdeyi ölçeklemek fizikte sorun çıkarır; parlayarak belirsin
 	f.modulate = Color(2.2, 2.2, 2.2)
 	create_tween().tween_property(f, "modulate", Color.WHITE, 0.35)
 	Sfx.play("swap")
 	GameData.vibrate(30)
+
+func _level_seconds() -> int:
+	return int(float(Time.get_ticks_msec() - _level_msec) / 1000.0)
 
 # --- reklamlar (ads.gd) ---
 
@@ -449,6 +474,7 @@ func _on_ad_swap() -> void:
 	Ads.show_rewarded(func(earned: bool):
 		if earned and phase == Phase.LOST:
 			GameData.add_swaps(1)
+			Analytics.log_event("ad_reward", {"placement": "swap", "level": level})
 			_start_level(level, true))
 
 # Kazanınca "reklam izle, bambuyu ikiye katla" (seviye başına bir kez).
@@ -460,6 +486,7 @@ func _on_ad_double() -> void:
 			return
 		_doubled = true
 		GameData.add_bamboo(_reward)
+		Analytics.log_event("ad_reward", {"placement": "x2_bamboo", "level": level})
 		hud.set_win_total(_reward * 2, true, GameData.bamboo)
 		Sfx.play("reward_big")
 		hud.set_ad_visible(false))
@@ -748,7 +775,7 @@ func _panda_hit(food: Food) -> void:
 	panda.set_hits(panda_hits)
 	hud.lose_life(MAX_PANDA_HITS - panda_hits, panda.get_global_transform_with_canvas() * Vector2(0, -68))
 	if panda_hits >= MAX_PANDA_HITS:
-		_lose("Ouch! Poor panda!")
+		_lose("Ouch! Poor panda!", "panda")
 
 func _land_food(body: Food) -> void:
 	if body.get_meta("landed", false):

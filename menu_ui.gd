@@ -492,6 +492,7 @@ func _on_action() -> void:
 		Sfx.play("equip")
 		outfit_preview.emit(GameData.outfit.duplicate())
 	elif GameData.buy(id):
+		Analytics.log_event("item_purchased", {"item": id, "price": Accessories.get_item(id)["price"], "level": GameData.level})
 		GameData.vibrate(40)
 		Sfx.play("buy")
 		outfit_preview.emit(GameData.outfit.duplicate())
@@ -540,6 +541,7 @@ func _pick_theme(t: String) -> void:
 	if not GameData.theme_unlocked(t):
 		return
 	GameData.set_theme(t)
+	Analytics.log_event("theme_selected", {"theme": t})
 	theme_picked.emit(t)
 	for c in _theme_cards:
 		c.queue_redraw()
@@ -615,6 +617,7 @@ func _on_claim() -> void:
 	if not GameData.daily_available():
 		return
 	var r := GameData.claim_daily()
+	Analytics.log_event("daily_claimed", {"day": r["day"], "streak": GameData.streak})
 	GameData.vibrate(40)
 	Sfx.play("buy")
 	if r["crown"]:

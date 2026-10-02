@@ -101,6 +101,7 @@ func _initialize() -> void:
 	if _initialized:
 		return
 	_initialized = true
+	_apply_analytics_consent()
 	consent_ready.emit()
 	MobileAds.initialize()
 	var conf := RequestConfiguration.new()
@@ -110,6 +111,23 @@ func _initialize() -> void:
 	await get_tree().create_timer(0.1).timeout
 	_load_interstitial()
 	_load_rewarded()
+
+# UMP, oyuncunun hangi amaçlara izin verdiğini Godot'a ayrıntılı vermediği için onay
+# gerektiren bölgelerde (AB/İngiltere) analitik kapalı kalır; başka yerlerde açılır.
+# Debug build'de test cihazı AB taklit ettiği için her zaman açık (DebugView ile denensin).
+func _apply_analytics_consent() -> void:
+	if OS.get_name() != "Android":
+		return
+	if OS.is_debug_build():
+		Analytics.set_consent(true)
+		return
+	match UserMessagingPlatform.consent_information.get_consent_status():
+		ConsentInformation.ConsentStatus.NOT_REQUIRED:
+			Analytics.set_consent(true)
+		ConsentInformation.ConsentStatus.REQUIRED, ConsentInformation.ConsentStatus.OBTAINED:
+			Analytics.set_consent(false)
+		_:
+			pass   # UNKNOWN (ör. çevrimdışı): önceki açılıştaki kalıcı tercih geçerli kalsın
 
 func _use_test_ids() -> bool:
 	return OS.is_debug_build() or APP_TEST or OS.get_name() != "Android"

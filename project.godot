@@ -25,6 +25,7 @@ config/features=PackedStringArray("4.7", "Mobile")
 GameData="*res://game_data.gd"
 Ads="*res://ads.gd"
 Sfx="*res://audio.gd"
+Analytics="*res://analytics.gd"
 
 [display]
 
@@ -36,7 +37,7 @@ window/handheld/orientation=1
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/admob/plugin.cfg")
+enabled=PackedStringArray("res://addons/admob/plugin.cfg", "res://addons/godotx_firebase/plugin.cfg")
 
 [input_devices]
 
