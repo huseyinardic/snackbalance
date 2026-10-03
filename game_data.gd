@@ -21,6 +21,8 @@ const REWARD_LEVEL := 10
 const REWARD_HARD := 10
 const REWARD_NO_HITS := 5
 const REWARD_NO_DROPS := 5
+const CHAPTER_SIZE := 10          # menüdeki bölüm şeridi: 10 seviye
+const CHAPTER_CHEST := 50         # bölümün son seviyesini kazanınca sandık (bambu)
 
 var level := 1
 var best_level := 1              # ulaşılan en yüksek seviye (tema kilidi buna bakar)
@@ -33,6 +35,8 @@ var streak := 0
 var last_day := ""               # en son oynanan gün (seri)
 var claimed_day := ""            # günlük ödülün en son alındığı gün
 var sunset_seen := false         # "yeni tema" kırmızı noktası görüldü mü
+var tutorial_done := false      # ilk seviyedeki sürükle-bırak eli artık gösterilmez
+var panda_tip_done := false     # 2. seviyedeki "Not on the panda!" uyarısı artık gösterilmez
 var is_new := true               # kayıt dosyası yoktu: ilk açılış (menü atlanır, direkt 1. seviye)
 var music_on := true
 var sfx_on := true
@@ -51,6 +55,9 @@ func load_data() -> void:
 	is_new = false
 	level = maxi(1, int(cfg.get_value("progress", "level", 1)))
 	best_level = maxi(level, int(cfg.get_value("progress", "best_level", level)))
+	# alanın olmadığı eski kayıtlar: 1. seviyeyi geçmiş oyuncu oyunu zaten biliyor
+	tutorial_done = cfg.get_value("progress", "tutorial_done", best_level > 1)
+	panda_tip_done = cfg.get_value("progress", "panda_tip_done", best_level > 2)
 	swaps = maxi(0, int(cfg.get_value("progress", "swaps", SWAP_START)))
 	bamboo = maxi(0, int(cfg.get_value("economy", "bamboo", 0)))
 	owned = cfg.get_value("economy", "owned", [])
@@ -72,6 +79,8 @@ func save() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("progress", "level", level)
 	cfg.set_value("progress", "best_level", best_level)
+	cfg.set_value("progress", "tutorial_done", tutorial_done)
+	cfg.set_value("progress", "panda_tip_done", panda_tip_done)
 	cfg.set_value("progress", "swaps", swaps)
 	cfg.set_value("economy", "bamboo", bamboo)
 	cfg.set_value("economy", "owned", owned)
@@ -93,6 +102,18 @@ func vibrate(ms: int) -> void:
 		Input.vibrate_handheld(ms)
 
 # --- ilerleme ---
+
+func complete_tutorial() -> void:
+	if tutorial_done:
+		return
+	tutorial_done = true
+	save()
+
+func complete_panda_tip() -> void:
+	if panda_tip_done:
+		return
+	panda_tip_done = true
+	save()
 
 func set_level(n: int) -> void:
 	level = maxi(1, n)

@@ -50,6 +50,8 @@ var _btn_home: UiKit.Btn
 var _pause_btn: UiKit.Btn
 var _pause: Control
 var _won := false
+var _lose_offer := ""
+var _tip := ""                  # kaybedince gösterilecek ipucu (Continue teklifi yoksa)
 var top_inset := 0.0   # çentik payı (main.gd oyun kamerasını buna göre yerleştirir)
 
 signal next_pressed
@@ -57,6 +59,7 @@ signal retry_pressed
 signal home_pressed
 signal double_pressed
 signal swap_ad_pressed
+signal continue_pressed
 signal pause_pressed
 signal resume_pressed
 
@@ -300,7 +303,7 @@ func _ready() -> void:
 	gap.custom_minimum_size = Vector2(0, 6)
 	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_card_box.add_child(gap)
-	# reklam teklifi (kazanınca x2 bambu, kaybedince +1 Swap)
+	# reklam teklifi (kazanınca x2 bambu, kaybedince Continue ya da +1 Swap)
 	_btn_ad = UiKit.btn("", UiKit.ORANGE, 430, 100, 38, _on_ad_btn, UiKit.ad)
 	_btn_ad.icon_size = 54.0
 	_btn_ad.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -569,24 +572,38 @@ func set_win_total(total: int, animate: bool, bamboo: int = -1) -> void:
 func set_ad_visible(on: bool) -> void:
 	_btn_ad.visible = on
 
-func show_lose(reason: String, offer_swap_ad: bool = false, tip: String = "") -> void:
+# offer: "" | "swap" | "continue_panda" | "continue_tilt" (main.gd _lose_offer)
+func show_lose(reason: String, offer: String = "", tip: String = "") -> void:
 	hide_hold()
 	_won = false
+	_tip = tip
 	_clear_rewards()
 	_rewards.visible = false
 	_perfect.visible = false
 	_total.visible = false
 	_new_theme.visible = false
 	_goal.visible = false
-	_banner_sub.text = tip
 	_banner_sub.add_theme_color_override("font_color", GOLD)
-	_banner_sub.visible = tip != ""
-	_btn_ad.visible = offer_swap_ad
-	_btn_ad.text = "+1 Swap"
+	set_lose_offer(offer)
 	_btn_main.text = "Try again"
 	_btn_main.icon = UiKit.retry
 	_btn_main.icon_size = 56.0
 	_show_banner(reason, Color(1.0, 0.5, 0.45))
+
+# Kaybetme kartındaki reklam teklifi (ödüllü reklam sonradan yüklenirse de çağrılır).
+# Continue teklifi varsa alt satır ne kazanılacağını söyler, yoksa varsa ipucu kalır.
+func set_lose_offer(offer: String) -> void:
+	_lose_offer = offer
+	_btn_ad.visible = offer != ""
+	_btn_ad.text = "+1 Swap" if offer == "swap" else "Continue"
+	var sub := _tip
+	if offer == "continue_panda":
+		sub = "Get 1 more heart!"
+	elif offer == "continue_tilt":
+		sub = "Undo your last snack!"
+	_banner_sub.text = sub
+	_banner_sub.visible = sub != ""
+	_btn_ad.queue_redraw()
 
 func _clear_rewards() -> void:
 	for c in _rewards.get_children():
@@ -596,6 +613,8 @@ func _clear_rewards() -> void:
 func _on_ad_btn() -> void:
 	if _won:
 		double_pressed.emit()
+	elif _lose_offer.begins_with("continue"):
+		continue_pressed.emit()
 	else:
 		swap_ad_pressed.emit()
 
@@ -636,6 +655,15 @@ func set_swap(shown: bool, count: int, can_use: bool, highlight: bool) -> void:
 		_swap_pulse.kill()
 		_swap_pulse = null
 		_swap.scale = Vector2.ONE
+
+# Continue sonrası canlar (uçan kalp yok, doğrudan).
+func set_lives(lives: int) -> void:
+	if _fly_tween:
+		_fly_tween.kill()
+	_fly_heart.visible = false
+	_lives.lives = lives
+	_lives.queue_redraw()
+	_lives.shake()
 
 # Seviye başında canlar dolu.
 func reset_lives(max_lives: int) -> void:

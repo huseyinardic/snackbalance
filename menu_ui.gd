@@ -19,7 +19,7 @@ var _gear: UiKit.Btn
 var _settings: Control
 var _privacy: UiKit.Btn
 var _toggles := {}   # ayar adı -> düğme
-var _level_label: Label
+var _strip: ChapterStrip
 var _play: UiKit.Btn
 var _btn_wardrobe: UiKit.Btn
 var _btn_themes: UiKit.Btn
@@ -240,11 +240,14 @@ func _build_home() -> void:
 	add_child(_gear)
 	Ads.consent_ready.connect(refresh)
 
-	_level_label = UiKit.label("", UiKit.BOLD, 38, Color.WHITE)
-	_level_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	_level_label.offset_top = -410.0
-	_level_label.offset_bottom = -362.0
-	add_child(_level_label)
+	# PLAY'in üstünde: bulunduğu 10 seviyelik bölüm, zor seviyeler, sandık
+	_strip = ChapterStrip.new()
+	_strip.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_strip.offset_left = -ChapterStrip.W / 2.0
+	_strip.offset_right = ChapterStrip.W / 2.0
+	_strip.offset_top = -366.0 - ChapterStrip.H
+	_strip.offset_bottom = -366.0
+	add_child(_strip)
 
 	_play = UiKit.btn("PLAY", UiKit.GREEN, 400, 128, 60, func(): play_pressed.emit(), UiKit.play)
 	_play.icon_size = 72.0
@@ -313,7 +316,7 @@ func back() -> bool:
 	return false
 
 func refresh() -> void:
-	_level_label.text = "Level %d" % GameData.level
+	_strip.set_level(GameData.level)
 	_btn_daily.badge = GameData.daily_available()
 	_btn_themes.badge = GameData.new_theme_badge()
 	var goal := Accessories.next_goal(GameData.owned)

@@ -34,6 +34,12 @@ const TILT_WARN_DEG := 22.0      # bu açıdan sonra kiriş kızarıp yanıp sö
 const INTRO_SECONDS := 1.0       # yeni seviye giriş kartı; ilk yiyecek bundan sonra gelir
 const DEV_LONG_PRESS_MS := 600   # test sürümü: seviye başlığına uzun basış = önceki seviye
 const SWAP_UNLOCK_LEVEL := 5     # Swap yardımcısı bu seviyeden itibaren (önce temel mekanik öğrenilsin)
+const TUTORIAL_OFFSET := 150.0   # tutorial elinin gösterdiği bırakma yeri (pivot'un solu)
+const TUTORIAL_DELAY := 0.6      # yiyecek bu kadar dokunulmadan bekleyince el çıkar
+const PANDA_TIP_LEVEL := 2       # "Not on the panda!" uyarısının öğretildiği seviye
+const CONTINUE_MIN_LEVEL := 3    # kaybedince "Continue" reklam teklifi bu seviyeden itibaren
+const REVIEW_MIN_LEVEL := 8      # değerlendirme penceresi en erken bu seviyenin kazanılmasında
+const CONTINUE_MAX_DEG := 18.0   # geri sarınca kiriş en çok bu eğimde, oyuncu yiyeceği koyana dek sabit
 const MENU_ZOOM := 2.0           # menüde kamera pandaya bu kadar yaklaşır
 const CAMERA_SECONDS := 0.6      # menü <-> oyun kamera geçişi
 # Oyun kamerası ekran oranına göre yaklaşır: uzun telefonlarda fazla yükseklik eskiden
@@ -84,6 +90,17 @@ var _doubled := false
 var _first_menu := true          # günlük ödül penceresi yalnız ilk menü açılışında kendiliğinden
 var _cam_tween: Tween
 var _level_msec := 0             # analitik: seviyenin başladığı an (süre)
+var _tutorial: TutorialHand
+var _tutorial_logged := false    # analitik: tutorial_begin oturumda bir kez
+var _tutorial_idle := 0.0        # yiyecek kaç sn'dir dokunulmadan bekliyor
+var _panda_tip: PandaTip
+var _panda_tip_on := false       # uyarı şu an görünüyor (panda da endişelenir)
+var _panda_tip_logged := false   # analitik: panda_tip_shown oturumda bir kez
+var _continue_used := false      # bu denemede Continue kullanıldı mı (deneme başına 1)
+var _lose_cause := ""            # "tilt" | "panda"
+var _snap := {}                  # son yiyecek bırakılmadan hemen önceki alan (devrilince geri sarmak için)
+var _review: ReviewPrompt
+var _beam_held := false          # Continue sonrası kiriş, sıradaki yiyecek değene kadar sabit
 
 # Bekleyen yiyeceğin nereye ineceğini gösteren kesikli çizgi; pandaya
 # denk geliyorsa kırmızı olur.
@@ -92,12 +109,28 @@ class DropGuide extends Node2D:
 	var from := Vector2.ZERO
 	var to := Vector2.ZERO
 	var danger := false
+	var emphasis := false   # 2. seviye uyarısı: kırmızı çizgi nabız gibi atar, ucunda çarpı
+	var _t := 0.0
+
+	func _process(delta: float) -> void:
+		if emphasis and active:
+			_t += delta
+			queue_redraw()
 
 	func _draw() -> void:
 		if not active:
 			return
 		# açık zeminde okunsun diye koyu (pandaya denk geliyorsa kırmızı)
 		var col := Color(0.9, 0.2, 0.18, 0.9) if danger else Color(0.18, 0.26, 0.18, 0.45)
+		if emphasis and danger:
+			var w := 4.0 + 2.5 * (0.5 + 0.5 * sin(_t * 9.0))
+			col = Color(0.95, 0.16, 0.14)
+			draw_dashed_line(from, to, col, w, 14.0)
+			for d in [Vector2(1, 1), Vector2(1, -1)]:   # ucunda çarpı
+				draw_line(to - d * 13.0, to + d * 13.0, Color.WHITE, w + 5.0)
+			for d in [Vector2(1, 1), Vector2(1, -1)]:
+				draw_line(to - d * 12.0, to + d * 12.0, col, w + 1.0)
+			return
 		draw_dashed_line(from, to, col, 3.0, 12.0)
 		draw_line(to + Vector2(-16, 0), to + Vector2(16, 0), col, 3.0)
 
@@ -107,6 +140,12 @@ func _ready() -> void:
 	move_child(_guide, food_container.get_index())   # yiyeceklerin altında çizilsin
 	hud = LevelHud.new()
 	$UI.add_child(hud)
+	_tutorial = TutorialHand.new()
+	$UI.add_child(_tutorial)
+	_panda_tip = PandaTip.new()
+	$UI.add_child(_panda_tip)
+	_review = ReviewPrompt.new()
+	add_child(_review)
 	hud.next_pressed.connect(_on_next)
 	hud.retry_pressed.connect(func():
 		if not Ads.busy():
@@ -116,6 +155,7 @@ func _ready() -> void:
 			_go_home())
 	hud.double_pressed.connect(_on_ad_double)
 	hud.swap_ad_pressed.connect(_on_ad_swap)
+	hud.continue_pressed.connect(_on_continue)
 	hud.pause_pressed.connect(_pause)
 	hud.resume_pressed.connect(_resume)
 	menu = MenuUi.new()
@@ -166,6 +206,8 @@ func _start_level(n: int, retry: bool = false) -> void:
 	_drops = 0
 	_doubled = false
 	_swap_used = false
+	_continue_used = false
+	_snap = {}
 	if not retry:
 		_swap_hint = false
 	_swap_pressing = false
@@ -181,6 +223,7 @@ func _start_level(n: int, retry: bool = false) -> void:
 
 # Kirişi ve pandayı sıfırla, eski yiyecekleri kaldır (yeni seviye ve menüye dönüş).
 func _reset_field() -> void:
+	_release_beam()
 	panda.reset()
 	current_food = null
 	_dropping = false
@@ -319,9 +362,11 @@ func _process(delta: float) -> void:
 	var look_x := 0.0
 	if current_food != null:
 		look_x = current_food.global_position.x - panda.global_position.x
-	panda.set_watch(look_x, absf(deg) >= TILT_WARN_DEG)
+	panda.set_watch(look_x, absf(deg) >= TILT_WARN_DEG or _panda_tip_on)
 
 	_update_food(delta)
+	_update_tutorial(delta)
+	_update_panda_tip()
 	if phase == Phase.LOST:   # iniş pandaya ikinci vuruş olduysa
 		return
 	_mark_lost_foods()
@@ -368,11 +413,16 @@ func _mark_lost_foods() -> void:
 
 func _win() -> void:
 	phase = Phase.WON
+	if level == PANDA_TIP_LEVEL:
+		GameData.complete_panda_tip()
 	_swap_hint = false
 	_set_guide(false)
 	var had_sunset := GameData.sunset_unlocked()
 	GameData.set_level(level + 1)
 	var rewards := GameData.level_rewards(Levels.is_peak(level), panda_hits, _drops)
+	if level % GameData.CHAPTER_SIZE == 0:
+		rewards.append(["Chapter chest", GameData.CHAPTER_CHEST])
+		Analytics.log_event("chapter_complete", {"chapter": level / GameData.CHAPTER_SIZE})
 	_reward = 0
 	for r in rewards:
 		_reward += r[1]
@@ -392,10 +442,27 @@ func _win() -> void:
 		GameData.bamboo, GameData.sunset_unlocked() and not had_sunset, Ads.rewarded_ready())
 	panda.celebrate()
 	GameData.vibrate(60)
+	if level >= REVIEW_MIN_LEVEL and panda_hits == 0:
+		_ask_review_later()
+
+# Oyuncunun en mutlu anı: kazanma kartı açıldıktan biraz sonra (konfeti, "PERFECT").
+# Geçiş reklamı "Next"ten sonra geldiği için pencereyle çakışmaz.
+func _ask_review_later() -> void:
+	var lv := level
+	await get_tree().create_timer(1.2).timeout
+	if phase == Phase.WON and level == lv:
+		_review.maybe_ask("level_win")
 
 # cause: analitik için kısa kod ("tilt" = devrildi, "panda" = pandaya 2. vuruş)
 func _lose(reason: String, cause: String) -> void:
 	phase = Phase.LOST
+	_lose_cause = cause
+	if cause == "panda":
+		# Kart açıkken ve reklam oynarken fizik sürer: eğik kiriş devrilmeye devam edip
+		# Continue'dan dönünce anında "Out of balance!" oluyordu. Kaybedilen anı sakla;
+		# Continue oraya döner (bekleyen yiyecek varsa o da geri gelir).
+		var waiting: Food = current_food if current_food != null and current_food.freeze else null
+		_take_snapshot(waiting)
 	Analytics.log_event("level_fail", {
 		"level": level,
 		"cause": cause,
@@ -413,7 +480,7 @@ func _lose(reason: String, cause: String) -> void:
 	if level >= SWAP_UNLOCK_LEVEL and GameData.swaps > 0 and not _swap_used:
 		tip = "Tip: Swap a hard food!"
 		_swap_hint = true
-	hud.show_lose(reason, _offer_swap_ad(), tip)
+	hud.show_lose(reason, _lose_offer(), tip)
 	Sfx.play("lose")
 	GameData.vibrate(80)
 
@@ -505,12 +572,129 @@ func _on_next() -> void:
 func _offer_swap_ad() -> bool:
 	return level >= SWAP_UNLOCK_LEVEL and GameData.swaps == 0 and Ads.rewarded_ready()
 
+# Kaybetme kartındaki tek reklam teklifi. Önce "Continue" (deneme başına bir kez):
+# pandaya 2. vuruşta +1 can, devrilmede son yiyeceği geri al. Yoksa Swap'ı bitmiş
+# oyuncuya "+1 Swap".
+func _lose_offer() -> String:
+	if level >= CONTINUE_MIN_LEVEL and not _continue_used and Ads.rewarded_ready():
+		if _lose_cause == "panda" and not _snap.is_empty():
+			return "continue_panda"
+		if _lose_cause == "tilt" and not _snap.is_empty():
+			return "continue_tilt"
+	return "swap" if _offer_swap_ad() else ""
+
+func _on_continue() -> void:
+	if phase != Phase.LOST or _continue_used or Ads.busy():
+		return
+	Ads.show_rewarded(func(earned: bool):
+		if earned and phase == Phase.LOST and not _continue_used:
+			_continue_level())
+
+func _continue_level() -> void:
+	_continue_used = true
+	Analytics.log_event("ad_reward", {"placement": "continue_" + _lose_cause, "level": level})
+	Analytics.log_event("level_continue", {"level": level, "cause": _lose_cause})
+	hud.hide_banner()
+	# devrilme: son yiyecek bırakılmadan önceki ana; panda: kaybedilen ana (bir can geri)
+	_restore_snapshot()
+	if _lose_cause == "panda":
+		_set_panda_hits(MAX_PANDA_HITS - 1)
+	phase = Phase.PLAYING
+	beam_visual.modulate = Color.WHITE
+	_holding = false
+	_active_touch_index = -1
+	_swap_pressing = false
+	Sfx.play("reward")
+	GameData.vibrate(40)
+
+func _release_beam() -> void:
+	if _beam_held:
+		_beam_held = false
+		beam.freeze = false
+
+func _set_panda_hits(n: int) -> void:
+	panda_hits = n
+	panda.hits = n
+	panda.mood = PandaArt.Mood.IDLE
+	panda.queue_redraw()
+	hud.set_lives(MAX_PANDA_HITS - n)
+
+# Kirişin ve yerleşmiş yiyeceklerin durumu saklanır: oyuncu yiyeceği bıraktığında
+# (devrilince Continue bu ana döner, bırakılan yiyecek yeniden elinde olur) ve
+# pandaya 2. vuruşla kaybedildiğinde (Continue kaybedilen ana döner).
+func _take_snapshot(f: Food) -> void:
+	var rid := beam.get_rid()
+	var foods := []
+	for g in food_container.get_children():
+		if g is Food and g != f and g.get_meta("landed", false) and not g.get_meta("gone", false) and not g.get_meta("lost", false):
+			foods.append({"kind": g.kind, "xf": g.global_transform, "lv": g.linear_velocity,
+				"av": g.angular_velocity, "seq": g.get_meta("seq", -1)})
+	_snap = {
+		"beam_xf": PhysicsServer2D.body_get_state(rid, PhysicsServer2D.BODY_STATE_TRANSFORM),
+		"beam_av": PhysicsServer2D.body_get_state(rid, PhysicsServer2D.BODY_STATE_ANGULAR_VELOCITY),
+		"foods": foods,
+		# f: oyuncunun elindeki (bırakılan ya da bekleyen) yiyecek; yoksa -1
+		"kind": f.kind if f != null else -1, "seq": f.get_meta("seq", -1) if f != null else -1,
+		"x": f.position.x if f != null else pivot.position.x,
+		"panda_hits": panda_hits, "drops": _drops, "seq_index": _seq_index, "rng": _rng.state,
+	}
+
+# Bırakma anı bazen kiriş zaten hızla devrilirken yakalanır: o hâli aynen geri
+# yüklemek reklam izleyen oyuncuyu iki karede tekrar kaybettirirdi. Bu yüzden hızlar
+# sıfırlanır, eğim CONTINUE_MAX_DEG ile sınırlanır (yığın da kirişle birlikte döner)
+# ve kiriş, oyuncunun koyduğu yiyecek bir yere değene kadar sabit tutulur.
+func _restore_snapshot() -> void:
+	for c in food_container.get_children():
+		food_container.remove_child(c)
+		c.queue_free()
+	current_food = null
+	_dropping = false
+	var bxf: Transform2D = _snap["beam_xf"]
+	var limit := deg_to_rad(CONTINUE_MAX_DEG)
+	var turn := clampf(bxf.get_rotation(), -limit, limit) - bxf.get_rotation()
+	var held := Transform2D(bxf.get_rotation() + turn, pivot.position)
+	beam.freeze = true
+	_beam_held = true
+	beam.global_transform = held
+	var rid := beam.get_rid()
+	PhysicsServer2D.body_set_state(rid, PhysicsServer2D.BODY_STATE_TRANSFORM, held)
+	PhysicsServer2D.body_set_state(rid, PhysicsServer2D.BODY_STATE_LINEAR_VELOCITY, Vector2.ZERO)
+	PhysicsServer2D.body_set_state(rid, PhysicsServer2D.BODY_STATE_ANGULAR_VELOCITY, 0.0)
+	for d in _snap["foods"]:
+		var g := Food.new()
+		g.setup(d["kind"])
+		g.set_meta("landed", true)
+		g.set_meta("seq", d["seq"])
+		var fx: Transform2D = d["xf"]
+		# FoodContainer dünya orijininde; yığın pivot etrafında kirişle aynı açıda döner
+		g.transform = Transform2D(fx.get_rotation() + turn, pivot.position + (fx.origin - pivot.position).rotated(turn))
+		food_container.add_child(g)
+	_set_panda_hits(_snap["panda_hits"])
+	_drops = _snap["drops"]
+	_seq_index = _snap["seq_index"]
+	_rng.state = _snap["rng"]
+	# elindeki yiyecek bıraktığı yerde yeniden bekler; yoksa sıradaki gelir
+	if _snap["kind"] < 0:
+		_spawn_wait = SPAWN_DELAY
+		return
+	var f := Food.new()
+	f.setup(_snap["kind"])
+	f.set_meta("seq", _snap["seq"])
+	f.freeze = true
+	f.collision_layer = 0
+	f.collision_mask = 0
+	f.position = Vector2(_snap["x"], HOVER_Y)
+	food_container.add_child(f)
+	current_food = f
+	f.modulate = Color(2.2, 2.2, 2.2)
+	create_tween().tween_property(f, "modulate", Color.WHITE, 0.35)
+
 # Ödüllü reklam sonradan yüklendiyse kartta teklif belirsin (ya da kullanıldıysa gizlensin).
 func _refresh_ad_offer() -> void:
 	if phase == Phase.WON:
 		hud.set_ad_visible(not _doubled and Ads.rewarded_ready())
 	elif phase == Phase.LOST:
-		hud.set_ad_visible(_offer_swap_ad())
+		hud.set_lose_offer(_lose_offer())
 
 # Swap düğmesi. (Kart ve menü düğmeleri dokunuşu kendileri yakalar — UiKit.Btn.) true = dokunuş arayüze gitti,
 # oyun (yiyecek tutma/bırakma, tekrar dene) görmesin.
@@ -533,6 +717,41 @@ func _update_food(_delta: float) -> void:
 	if _holding:
 		f.position.x = _lane_x(_touch_x)
 	_update_guide(f)
+
+# İlk seviyede, oyuncu henüz bir yiyeceği kirişe koymadıysa: bekleyen yiyecek
+# dururken el sürükle-bırakı gösterir (pandanın soluna, boş kirişe). Dokununca kaybolur.
+func _update_tutorial(delta: float) -> void:
+	var f := current_food
+	var show := not GameData.tutorial_done and level == 1 and phase == Phase.PLAYING \
+		and f != null and f.freeze and not _dropping and not _holding
+	# giriş kartı silinsin; oyuncu kendisi denemek isterse önce o dokunsun
+	_tutorial_idle = _tutorial_idle + delta if show else 0.0
+	if _tutorial_idle < TUTORIAL_DELAY:
+		_tutorial.stop()
+		return
+	var to := Vector2(pivot.position.x - TUTORIAL_OFFSET, f.global_position.y)
+	var xf := get_canvas_transform()
+	_tutorial.play(xf * f.global_position, xf * to, f.kind, xf.get_scale().x)
+	if not _tutorial_logged:
+		_tutorial_logged = true
+		Analytics.log_event("tutorial_begin")
+
+# 2. seviyede (oyuncu kuralı henüz öğrenmediyse) bekleyen yiyecek pandaya düşecek
+# yerdeyse: kılavuz çizgi nabız gibi atar, pandanın yanında uyarı çıkar, panda endişelenir.
+# Seviye kazanılınca ya da pandaya bir kez vurulunca kalıcı olarak kapanır.
+func _update_panda_tip() -> void:
+	var f := current_food
+	var on := not GameData.panda_tip_done and level == PANDA_TIP_LEVEL and phase == Phase.PLAYING \
+		and f != null and f.freeze and not _dropping and _guide.active and _guide.danger
+	_guide.emphasis = on
+	_panda_tip_on = on
+	if not on:
+		_panda_tip.hide_tip()
+		return
+	_panda_tip.show_at(panda.get_global_transform_with_canvas() * Vector2(0, -68))
+	if not _panda_tip_logged:
+		_panda_tip_logged = true
+		Analytics.log_event("panda_tip_shown")
 
 # Düşüş fizik adımlarında: kiriş ve düşen yiyecek aynı adımlarla ilerlesin.
 # _process'teyken yavaş karelerde (takılma, zayıf telefon) bir karede birkaç
@@ -572,7 +791,11 @@ func _update_guide(f: Food) -> void:
 	_guide.active = true
 	_guide.from = f.global_position + Vector2(0, f.half_h + 6)
 	_guide.to = land.origin + Vector2(0, f.half_h)
-	_guide.danger = safe < 1.0 and _lands_on_panda(f, land)
+	# cast_motion'ın "güvenli" noktası bu uzunlukta ~5 px hassas: yiyecek kirişin 5 px
+	# üstünde kalabiliyor ve _lands_on_panda'nın 3 px'lik yoklaması kirişe yetişemiyordu
+	# (panda üstündeyken çizgi bazen kırmızı olmuyordu). Temas noktasıyla (unsafe) bak.
+	var unsafe: float = res[1] if res.size() > 1 else 1.0
+	_guide.danger = safe < 1.0 and _lands_on_panda(f, f.global_transform.translated(motion * unsafe))
 	_guide.queue_redraw()
 
 func _steer(delta: float) -> void:
@@ -670,6 +893,7 @@ func _release() -> void:
 	if HOVER_DROP and current_food and current_food.freeze and not _dropping:
 		# anlık dokunuşta da parmağın olduğu yere düşsün
 		current_food.position.x = _lane_x(_touch_x)
+		_take_snapshot(current_food)
 		_dropping = true
 		_drop_speed = DROP_START_SPEED
 
@@ -752,6 +976,7 @@ func _lands_on_panda(food: Food, xform: Transform2D) -> bool:
 
 func _on_touchdown(food: Food) -> void:
 	_dropping = false
+	_release_beam()
 	if _lands_on_panda(food, food.global_transform):
 		_panda_hit(food)
 	else:
@@ -770,6 +995,8 @@ func _panda_hit(food: Food) -> void:
 	fade.tween_callback(food.queue_free)
 
 	panda_hits += 1
+	if level == PANDA_TIP_LEVEL:
+		GameData.complete_panda_tip()
 	Sfx.play("bonk")
 	GameData.vibrate(50)
 	panda.set_hits(panda_hits)
@@ -792,6 +1019,9 @@ func _land_food(body: Food) -> void:
 	var snd := "land_heavy" if body.mass >= 1.5 else ("land_mid" if body.mass >= 0.75 else "land_light")
 	Sfx.play(snd, -2.0, 1.0, 0.06)
 
+	if not GameData.tutorial_done:
+		GameData.complete_tutorial()
+		Analytics.log_event("tutorial_complete", {"duration_sec": _level_seconds()})
 	if body == current_food:
 		current_food = null
 		_spawn_wait = SPAWN_DELAY
