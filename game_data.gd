@@ -23,6 +23,11 @@ const REWARD_NO_HITS := 5
 const REWARD_NO_DROPS := 5
 const CHAPTER_SIZE := 10          # menüdeki bölüm şeridi: 10 seviye
 const CHAPTER_CHEST := 50         # bölümün son seviyesini kazanınca sandık (bambu)
+# Galibiyet serisi: art arda kazanılan seviye. Kaybedince sıfırlanır, "Continue" reklamı
+# korur. Kazanma ödülüne tavanlı bonus (indeks = bu galibiyetle ulaşılan seri; 5+ = son
+# değer) — tüm ödülü katlamak ekonomiyi bozardı. Rozet/uyarılar bonus başlayınca görünür.
+const WIN_STREAK_BONUS := [0, 0, 5, 10, 15, 20]
+const WIN_STREAK_SHOW := 2
 
 var level := 1
 var best_level := 1              # ulaşılan en yüksek seviye (tema kilidi buna bakar)
@@ -32,6 +37,7 @@ var owned: Array = []
 var outfit := {"head": "", "face": "", "neck": "", "mouth": ""}
 var theme := "day"
 var streak := 0
+var win_streak := 0              # art arda kazanılan seviye (günlük giriş serisi "streak"ten ayrı)
 var last_day := ""               # en son oynanan gün (seri)
 var claimed_day := ""            # günlük ödülün en son alındığı gün
 var sunset_seen := false         # "yeni tema" kırmızı noktası görüldü mü
@@ -59,6 +65,7 @@ func load_data() -> void:
 	tutorial_done = cfg.get_value("progress", "tutorial_done", best_level > 1)
 	panda_tip_done = cfg.get_value("progress", "panda_tip_done", best_level > 2)
 	swaps = maxi(0, int(cfg.get_value("progress", "swaps", SWAP_START)))
+	win_streak = maxi(0, int(cfg.get_value("progress", "win_streak", 0)))
 	bamboo = maxi(0, int(cfg.get_value("economy", "bamboo", 0)))
 	owned = cfg.get_value("economy", "owned", [])
 	for slot in Accessories.SLOTS:
@@ -82,6 +89,7 @@ func save() -> void:
 	cfg.set_value("progress", "tutorial_done", tutorial_done)
 	cfg.set_value("progress", "panda_tip_done", panda_tip_done)
 	cfg.set_value("progress", "swaps", swaps)
+	cfg.set_value("progress", "win_streak", win_streak)
 	cfg.set_value("economy", "bamboo", bamboo)
 	cfg.set_value("economy", "owned", owned)
 	for slot in Accessories.SLOTS:
@@ -118,6 +126,26 @@ func complete_panda_tip() -> void:
 func set_level(n: int) -> void:
 	level = maxi(1, n)
 	best_level = maxi(best_level, level)
+	save()
+
+static func win_streak_bonus(n: int) -> int:
+	return WIN_STREAK_BONUS[clampi(n, 0, WIN_STREAK_BONUS.size() - 1)]
+
+func add_win() -> void:
+	win_streak += 1
+	save()
+
+# Kaybedince seri hemen sıfırlanır (kart açıkken uygulama kapatılsa da kaybolur);
+# Continue dönen değeri restore_win_streak ile geri yazar.
+func break_win_streak() -> int:
+	var lost := win_streak
+	if lost > 0:
+		win_streak = 0
+		save()
+	return lost
+
+func restore_win_streak(n: int) -> void:
+	win_streak = maxi(win_streak, n)
 	save()
 
 func use_swap() -> void:

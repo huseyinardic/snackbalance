@@ -44,6 +44,14 @@ func _draw() -> void:
 	var title := "Level %d" % level
 	draw_string_outline(UiKit.BOLD, Vector2(0, 34), title, HORIZONTAL_ALIGNMENT_CENTER, W, 38, 10, UiKit.OUTLINE)
 	draw_string(UiKit.BOLD, Vector2(0, 34), title, HORIZONTAL_ALIGNMENT_CENTER, W, 38, Color.WHITE)
+	# galibiyet serisi (bonus başladıysa): başlığın sağında alev + "x3"
+	if GameData.win_streak >= GameData.WIN_STREAK_SHOW:
+		var tw := UiKit.BOLD.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, 38).x
+		var sx := W / 2.0 + tw / 2.0 + 22.0
+		UiKit.flame(self, Vector2(sx + 10.0, 24.0), 11.0, true)
+		var st := "x%d" % GameData.win_streak
+		draw_string_outline(UiKit.BOLD, Vector2(sx + 26.0, 34), st, HORIZONTAL_ALIGNMENT_LEFT, -1, 32, 9, UiKit.OUTLINE)
+		draw_string(UiKit.BOLD, Vector2(sx + 26.0, 34), st, HORIZONTAL_ALIGNMENT_LEFT, -1, 32, Color(1.0, 0.72, 0.3))
 	# düğümlerin arkasında yarı saydam hap: kütüğün üstünde de okunsun
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.08, 0.16, 0.08, 0.42)
@@ -83,7 +91,7 @@ func _node(p: Vector2, lv: int) -> void:
 	var col := Color.WHITE if hard else INK
 	draw_string(UiKit.BOLD, Vector2(p.x - 30, p.y + fs * 0.36), txt, HORIZONTAL_ALIGNMENT_CENTER, 60, fs, col)
 	if hard:
-		_flame(p + Vector2(r * 1.0, -r * 1.1), 8.0)
+		UiKit.flame(self, p + Vector2(r * 1.0, -r * 1.1), 8.0)
 
 # Bölüm sonu: bambu sandığı; altında ödül.
 func _chest(p: Vector2, lv: int) -> void:
@@ -121,12 +129,3 @@ func _tease(p: Vector2, lv: int) -> void:
 		for i in 8:
 			var d := Vector2.from_angle(TAU * i / 8.0)
 			draw_line(p + d * 16.0, p + d * 21.0, Color(1.0, 0.75, 0.35), 3.0, true)
-
-# küçük alev (zor seviye): sivri uçlu damla
-func _flame(c: Vector2, r: float) -> void:
-	var pts := PackedVector2Array([c + Vector2(0, -r * 1.8)])
-	for i in 13:
-		var a := lerpf(-0.35, PI + 0.35, i / 12.0)
-		pts.append(c + Vector2(cos(a) * r * 0.85, sin(a) * r))
-	draw_colored_polygon(pts, Color(1.0, 0.55, 0.15))
-	draw_circle(c + Vector2(0, r * 0.25), r * 0.45, Color(1.0, 0.9, 0.4))

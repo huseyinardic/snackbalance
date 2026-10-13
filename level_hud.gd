@@ -50,6 +50,8 @@ var _btn_home: UiKit.Btn
 var _pause_btn: UiKit.Btn
 var _pause: Control
 var _won := false
+var _streak: StreakBadge
+var _streak_risk := 0           # kaybedilen seri (Continue korursa geri gelir)
 var _lose_offer := ""
 var _tip := ""                  # kaybedince gösterilecek ipucu (Continue teklifi yoksa)
 var top_inset := 0.0   # çentik payı (main.gd oyun kamerasını buna göre yerleştirir)
@@ -72,6 +74,35 @@ class FoodIcon extends Control:
 		var k := minf(size.x / 84.0, size.y / 66.0)
 		draw_set_transform(size / 2.0 + Vector2(0, 3.0 * k), 0.0, Vector2(k, k))
 		Food.paint(self, kind)
+
+# Galibiyet serisi rozeti (sağ üst, duraklat düğmesinin simetriği): alev + "x3".
+# Kazanınca bir sayı artar ve zıplar.
+class StreakBadge extends Control:
+	var count := 0
+	var font: Font
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func set_count(n: int, animate: bool) -> void:
+		count = n
+		visible = n >= GameData.WIN_STREAK_SHOW
+		queue_redraw()
+		if animate and visible:
+			pivot_offset = size / 2.0
+			scale = Vector2(1.35, 1.35)
+			create_tween().tween_property(self, "scale", Vector2.ONE, 0.4) 				.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+	func _draw() -> void:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.1, 0.2, 0.1, 0.28)
+		sb.set_corner_radius_all(int(size.y / 2.0))
+		draw_style_box(sb, Rect2(Vector2.ZERO, size))
+		UiKit.flame(self, Vector2(36.0, size.y / 2.0 + 8.0), 15.0, true)
+		var t := "x%d" % count
+		var y := size.y / 2.0 + 15.0
+		draw_string_outline(font, Vector2(58.0, y), t, HORIZONTAL_ALIGNMENT_LEFT, -1, 42, 10, OUTLINE)
+		draw_string(font, Vector2(58.0, y), t, HORIZONTAL_ALIGNMENT_LEFT, -1, 42, Color.WHITE)
 
 # Pandanın canları (sol alt, Swap'ın simetriği): mini panda yüzü + kalpler.
 # Çarpınca pandanın başından kırık kalp buraya uçar, kalp çatlayıp sönük griye
@@ -332,6 +363,17 @@ func _ready() -> void:
 	add_child(_pause_btn)
 	move_child(_pause_btn, _banner.get_index())   # kazan/kaybet kartının altında
 
+	_streak = StreakBadge.new()
+	_streak.font = _bold
+	_streak.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	_streak.offset_left = -152.0
+	_streak.offset_right = -22.0
+	_streak.offset_top = 38.0
+	_streak.offset_bottom = 110.0
+	_streak.visible = false
+	add_child(_streak)
+	move_child(_streak, _banner.get_index())
+
 	# duraklatma kartı (ağaç duraklatılmışken de dokunuş alsın)
 	_pause = Control.new()
 	_pause.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -465,7 +507,7 @@ func _apply_top_inset() -> void:
 	if inset <= 0.0:
 		return
 	top_inset = inset
-	for c: Control in [_title, _progress, _hint, _pause_btn]:
+	for c: Control in [_title, _progress, _hint, _pause_btn, _streak]:
 		c.offset_top += inset
 		c.offset_bottom += inset
 
@@ -502,6 +544,9 @@ func set_progress(placed: int) -> void:
 			create_tween().tween_property(ic, "scale", Vector2.ONE, 0.3) \
 				.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_placed = placed
+
+func set_win_streak(n: int, animate: bool) -> void:
+	_streak.set_count(n, animate)
 
 func set_hint(text: String) -> void:
 	_hint.text = text
@@ -573,10 +618,12 @@ func set_ad_visible(on: bool) -> void:
 	_btn_ad.visible = on
 
 # offer: "" | "swap" | "continue_panda" | "continue_tilt" (main.gd _lose_offer)
-func show_lose(reason: String, offer: String = "", tip: String = "") -> void:
+# streak_lost: bu kayıpla sıfırlanan galibiyet serisi (Continue teklifi varsa "koru" yazar).
+func show_lose(reason: String, offer: String = "", tip: String = "", streak_lost: int = 0) -> void:
 	hide_hold()
 	_won = false
 	_tip = tip
+	_streak_risk = streak_lost
 	_clear_rewards()
 	_rewards.visible = false
 	_perfect.visible = false
@@ -601,6 +648,9 @@ func set_lose_offer(offer: String) -> void:
 		sub = "Get 1 more heart!"
 	elif offer == "continue_tilt":
 		sub = "Undo your last snack!"
+	if offer.begins_with("continue") and _streak_risk >= GameData.WIN_STREAK_SHOW:
+		sub += "
+Keep your x%d win streak!" % _streak_risk
 	_banner_sub.text = sub
 	_banner_sub.visible = sub != ""
 	_btn_ad.queue_redraw()
@@ -631,6 +681,7 @@ func show_pause(on: bool) -> void:
 func set_play_visible(on: bool) -> void:
 	for c: Control in [_title, _progress, _hint, _lives, _pause_btn]:
 		c.visible = on
+	_streak.visible = on and _streak.count >= GameData.WIN_STREAK_SHOW
 	if not on:
 		hide_hold()
 		hide_banner()

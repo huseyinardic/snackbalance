@@ -98,6 +98,7 @@ var _panda_tip_on := false       # uyarı şu an görünüyor (panda da endişel
 var _panda_tip_logged := false   # analitik: panda_tip_shown oturumda bir kez
 var _continue_used := false      # bu denemede Continue kullanıldı mı (deneme başına 1)
 var _lose_cause := ""            # "tilt" | "panda"
+var _streak_lost := 0            # bu kayıpla sıfırlanan galibiyet serisi (Continue geri verir)
 var _snap := {}                  # son yiyecek bırakılmadan hemen önceki alan (devrilince geri sarmak için)
 var _review: ReviewPrompt
 var _beam_held := false          # Continue sonrası kiriş, sıradaki yiyecek değene kadar sabit
@@ -215,6 +216,8 @@ func _start_level(n: int, retry: bool = false) -> void:
 	_reset_field()
 	hud.setup_level(level, _level_data["foods"], _level_data["hint"])
 	hud.reset_lives(MAX_PANDA_HITS)
+	_streak_lost = 0
+	hud.set_win_streak(GameData.win_streak, false)
 	var intro: float = 0.35 if retry else INTRO_SECONDS
 	if not retry:
 		Sfx.play("level_start", -4.0)
@@ -419,10 +422,14 @@ func _win() -> void:
 	_set_guide(false)
 	var had_sunset := GameData.sunset_unlocked()
 	GameData.set_level(level + 1)
+	GameData.add_win()
 	var rewards := GameData.level_rewards(Levels.is_peak(level), panda_hits, _drops)
 	if level % GameData.CHAPTER_SIZE == 0:
 		rewards.append(["Chapter chest", GameData.CHAPTER_CHEST])
 		Analytics.log_event("chapter_complete", {"chapter": level / GameData.CHAPTER_SIZE})
+	var streak_bonus := GameData.win_streak_bonus(GameData.win_streak)
+	if streak_bonus > 0:
+		rewards.append(["Win streak x%d" % GameData.win_streak, streak_bonus])
 	_reward = 0
 	for r in rewards:
 		_reward += r[1]
@@ -436,10 +443,12 @@ func _win() -> void:
 		"swap_used": 1 if _swap_used else 0,
 		"hard": 1 if Levels.is_peak(level) else 0,
 		"reward": _reward,
+		"win_streak": GameData.win_streak,
 	})
 	beam_visual.modulate = Color.WHITE
 	hud.show_win(level, rewards, _reward, panda_hits == 0 and _drops == 0, Accessories.next_goal(GameData.owned),
 		GameData.bamboo, GameData.sunset_unlocked() and not had_sunset, Ads.rewarded_ready())
+	hud.set_win_streak(GameData.win_streak, true)
 	panda.celebrate()
 	GameData.vibrate(60)
 	if level >= REVIEW_MIN_LEVEL and panda_hits == 0:
@@ -457,6 +466,8 @@ func _ask_review_later() -> void:
 func _lose(reason: String, cause: String) -> void:
 	phase = Phase.LOST
 	_lose_cause = cause
+	# Continue'dan sonra tekrar kaybedince seri zaten geri yazılmıştı; yeniden sıfırlanır.
+	_streak_lost = GameData.break_win_streak()
 	if cause == "panda":
 		# Kart açıkken ve reklam oynarken fizik sürer: eğik kiriş devrilmeye devam edip
 		# Continue'dan dönünce anında "Out of balance!" oluyordu. Kaybedilen anı sakla;
@@ -470,6 +481,7 @@ func _lose(reason: String, cause: String) -> void:
 		"placed": mini(_placed_count(), _target()),
 		"target": _target(),
 		"swap_used": 1 if _swap_used else 0,
+		"win_streak": _streak_lost,
 	})
 	if current_food and current_food.freeze:
 		current_food.queue_free()
@@ -480,7 +492,7 @@ func _lose(reason: String, cause: String) -> void:
 	if level >= SWAP_UNLOCK_LEVEL and GameData.swaps > 0 and not _swap_used:
 		tip = "Tip: Swap a hard food!"
 		_swap_hint = true
-	hud.show_lose(reason, _lose_offer(), tip)
+	hud.show_lose(reason, _lose_offer(), tip, _streak_lost)
 	Sfx.play("lose")
 	GameData.vibrate(80)
 
@@ -593,7 +605,10 @@ func _on_continue() -> void:
 func _continue_level() -> void:
 	_continue_used = true
 	Analytics.log_event("ad_reward", {"placement": "continue_" + _lose_cause, "level": level})
-	Analytics.log_event("level_continue", {"level": level, "cause": _lose_cause})
+	Analytics.log_event("level_continue", {"level": level, "cause": _lose_cause, "win_streak": _streak_lost})
+	if _streak_lost > 0:
+		GameData.restore_win_streak(_streak_lost)
+		hud.set_win_streak(GameData.win_streak, false)
 	hud.hide_banner()
 	# devrilme: son yiyecek bırakılmadan önceki ana; panda: kaybedilen ana (bir can geri)
 	_restore_snapshot()

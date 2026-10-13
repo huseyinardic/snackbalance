@@ -236,6 +236,28 @@ static func bamboo(ci: CanvasItem, c: Vector2, s: float) -> void:
 	ArtUtil.leaf(ci, lb - dir * 2.0 * k, dir, 22.0 * k, 8.0 * k, INK)
 	ArtUtil.leaf(ci, lb, dir, 18.0 * k, 6.0 * k, Color(0.42, 0.76, 0.3))
 
+# Alev (zor seviye, galibiyet serisi): ortada büyük, iki yanda eğik küçük dil, içinde
+# sarı çekirdek. c = gövde merkezi, r = yarıçap. outline: koyu sticker konturu.
+static func flame(ci: CanvasItem, c: Vector2, r: float, outline: bool = false) -> void:
+	var tongues := [[c + Vector2(-r * 0.5, r * 0.3), r * 0.58, -0.55], [c + Vector2(r * 0.5, r * 0.3), r * 0.58, 0.55],
+		[c, r, 0.0]]
+	if outline:
+		for t in tongues:
+			_drop(ci, t[0], t[1], t[2], INK, 3.0)
+	for t in tongues:
+		_drop(ci, t[0], t[1], t[2], Color(1.0, 0.42, 0.12), 0.0)
+	_drop(ci, c + Vector2(0, r * 0.38), r * 0.55, 0.0, Color(1.0, 0.86, 0.3), 0.0)
+
+# Sivri uçlu damla (ucu yukarı, rot ile eğilir); grow: kontur için dışa büyütme (px).
+static func _drop(ci: CanvasItem, c: Vector2, r: float, rot: float, col: Color, grow: float) -> void:
+	var pts := PackedVector2Array([Vector2(0, -r * 1.8 - grow * 1.6)])
+	for i in 13:
+		var a := lerpf(-0.35, PI + 0.35, i / 12.0)
+		pts.append(Vector2(cos(a) * (r * 0.85 + grow), sin(a) * (r + grow)))
+	for i in pts.size():
+		pts[i] = c + pts[i].rotated(rot)
+	ci.draw_colored_polygon(pts, col)
+
 static func play(ci: CanvasItem, c: Vector2, s: float) -> void:
 	var r := s * 0.42
 	ci.draw_colored_polygon(PackedVector2Array([c + Vector2(-r * 0.7, -r), c + Vector2(r, 0), c + Vector2(-r * 0.7, r)]), Color.WHITE)
