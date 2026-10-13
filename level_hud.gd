@@ -44,6 +44,13 @@ var _total: HBoxContainer
 var _total_label: Label
 var _goal: GoalBar
 var _new_theme: Label
+var _race_line: Label
+var _race_pop: Control
+var _race_pop_title: Label
+var _race_pop_sub: Label
+var _race_pop_board: RaceBoard
+var _race_pop_msg: Label
+var _race_pop_btn: UiKit.Btn
 var _btn_ad: UiKit.Btn
 var _btn_main: UiKit.Btn
 var _btn_home: UiKit.Btn
@@ -64,16 +71,21 @@ signal swap_ad_pressed
 signal continue_pressed
 signal pause_pressed
 signal resume_pressed
+signal race_continue
 
 # Küçük yiyecek simgesi: yiyeceğin kendi çizimi (Food.paint) kutuya sığdırılır.
 class FoodIcon extends Control:
 	var kind := 0
+	var golden := false     # Panda Yarışı: bu yiyecek altın bambu taşıyor
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 	func _draw() -> void:
 		var k := minf(size.x / 84.0, size.y / 66.0)
 		draw_set_transform(size / 2.0 + Vector2(0, 3.0 * k), 0.0, Vector2(k, k))
 		Food.paint(self, kind)
+		if golden:
+			draw_set_transform(Vector2.ZERO)
+			Race.coin(self, Vector2(size.x - 7.0, 7.0), 10.0)
 
 # Galibiyet serisi rozeti (sağ üst, duraklat düğmesinin simetriği): alev + "x3".
 # Kazanınca bir sayı artar ve zıplar.
@@ -324,6 +336,9 @@ func _ready() -> void:
 	_card_box.add_child(_total)
 	_new_theme = _label("New theme: Sunset!", _bold, 34, Color(1.0, 0.7, 0.45))
 	_card_box.add_child(_new_theme)
+	_race_line = _label("", _bold, 34, Color(1.0, 0.72, 0.3))
+	_race_line.add_theme_constant_override("line_spacing", -6)
+	_card_box.add_child(_race_line)
 	_goal = GoalBar.new()
 	_goal.custom_minimum_size = Vector2(500, 90)
 	_goal.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -473,7 +488,80 @@ func _ready() -> void:
 	_fly_heart.visible = false
 	add_child(_fly_heart)
 
+	_build_race_pop()
 	_apply_top_inset()
+
+# Seviye sonu Panda Yarışı kartı (kazanma kartının üstünde): yarış açılınca tanıtım,
+# sıralamada yükselince oyuncunun satırı geçtiği rakiplerin üstüne kayar.
+func _build_race_pop() -> void:
+	_race_pop = Control.new()
+	_race_pop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_race_pop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_race_pop.visible = false
+	var block := UiKit.Blocker.new()
+	block.color = Color(0, 0, 0, 0.5)
+	_race_pop.add_child(block)
+	var card := PanelContainer.new()
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_theme_stylebox_override("panel", UiKit.panel_style())
+	card.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	card.offset_left = -330.0
+	card.offset_right = 330.0
+	card.offset_top = -380.0
+	card.offset_bottom = 380.0
+	var margin := MarginContainer.new()
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 26)
+	var box := VBoxContainer.new()
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 12)
+	_race_pop_title = UiKit.ink_label("", UiKit.BOLD, 50)
+	box.add_child(_race_pop_title)
+	_race_pop_sub = UiKit.ink_label("", UiKit.BOLD, 28, Color(0.55, 0.35, 0.85))
+	box.add_child(_race_pop_sub)
+	_race_pop_board = RaceBoard.new()
+	_race_pop_board.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(_race_pop_board)
+	_race_pop_msg = UiKit.ink_label("", UiKit.BOLD, 32, Color(0.85, 0.45, 0.1))
+	_race_pop_msg.add_theme_constant_override("line_spacing", -4)
+	box.add_child(_race_pop_msg)
+	_race_pop_btn = UiKit.btn("", UiKit.GREEN, 360, 100, 44, _on_race_pop_btn, UiKit.play)
+	_race_pop_btn.icon_size = 50.0
+	_race_pop_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(_race_pop_btn)
+	margin.add_child(box)
+	card.add_child(margin)
+	_race_pop.add_child(card)
+	add_child(_race_pop)
+
+# p: main._race_pop — title, sub, msg, button, old (standings), new (standings), animate.
+func show_race(p: Dictionary) -> void:
+	_race_pop_title.text = p["title"]
+	_race_pop_sub.text = p["sub"]
+	_race_pop_msg.text = p["msg"]
+	_race_pop_btn.text = p["button"]
+	_race_pop_board.set_window(p["old"], p["new"])
+	_race_pop_board.k = 0.0 if p["animate"] else 1.0
+	_race_pop.visible = true
+	var card: Control = _race_pop.get_child(1)
+	card.pivot_offset = card.size / 2.0
+	card.scale = Vector2(0.7, 0.7)
+	create_tween().tween_property(card, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_race_pop_msg.modulate.a = 0.0 if p["animate"] else 1.0
+	if p["animate"]:
+		var t := create_tween()
+		t.tween_interval(0.45)
+		t.tween_callback(func(): Sfx.play("reward", -3.0))
+		t.tween_property(_race_pop_board, "k", 1.0, 1.0)
+		t.tween_property(_race_pop_msg, "modulate:a", 1.0, 0.2)
+	else:
+		Sfx.play("reward", -3.0)
+
+func _on_race_pop_btn() -> void:
+	_race_pop.visible = false
+	race_continue.emit()
 
 func _label(text: String, font: Font, size: int, color: Color) -> Label:
 	var l := Label.new()
@@ -513,15 +601,17 @@ func _apply_top_inset() -> void:
 
 # --- main.gd'nin çağırdıkları ---
 
-func setup_level(level: int, foods: Array, hint: String) -> void:
+# golden: altın bambulu yiyeceklerin sıra no'ları (Panda Yarışı; yoksa boş).
+func setup_level(level: int, foods: Array, hint: String, golden: Array = []) -> void:
 	_title.text = "LEVEL %d" % level
 	_hint.text = hint
 	for c in _progress.get_children():
 		c.queue_free()
 	var icon_w := clampf(640.0 / foods.size() - 6.0, 30.0, 52.0)
-	for k in foods:
+	for i in foods.size():
 		var ic := FoodIcon.new()
-		ic.kind = k
+		ic.kind = foods[i]
+		ic.golden = i in golden
 		ic.custom_minimum_size = Vector2(icon_w, 50)
 		_progress.add_child(ic)
 	_placed = -1
@@ -578,7 +668,9 @@ func show_win(level: int, rewards: Array, total: int, perfect: bool, goal: Dicti
 	_perfect.visible = perfect
 	_total.visible = true
 	set_win_total(total, false)
+	_new_theme.text = "New theme: Sunset!"
 	_new_theme.visible = new_theme
+	_race_line.visible = false
 	_goal.visible = not goal.is_empty()
 	if not goal.is_empty():
 		_goal.item_name = goal["name"]
@@ -604,6 +696,26 @@ func show_win(level: int, rewards: Array, total: int, perfect: bool, goal: Dicti
 	Sfx.play_later(0.75, "reward", -3.0)
 
 # x2 alınınca toplam büyüyerek güncellenir, sıradaki hedef çubuğu da.
+# Kazanma kartında Panda Yarışı satırı: "Race +12 (3 x4)" ve sıra değiştiyse yeni sıra.
+# race: main._win sözlüğü ({} = yarış yok); opened: bu galibiyetle yarış açıldı.
+func set_race_result(race: Dictionary, opened: bool) -> void:
+	if opened:
+		_new_theme.text = "New: Panda Race!"
+		_new_theme.visible = true
+	if race.is_empty():
+		return
+	var lines := []
+	if race["points"] > 0:
+		var t := "Race +%d" % race["points"]
+		if race["mult"] > 1:
+			t += "  (%d golden x%d)" % [race["golden"], race["mult"]]
+		lines.append(t)
+	if race["rank"] < race["old_rank"]:
+		lines.append("Up to %s place!" % Race.ordinal(race["rank"]))
+	_race_line.text = "
+".join(lines)
+	_race_line.visible = not lines.is_empty()
+
 func set_win_total(total: int, animate: bool, bamboo: int = -1) -> void:
 	_total_label.text = "+%d" % total
 	if bamboo >= 0:
@@ -629,6 +741,7 @@ func show_lose(reason: String, offer: String = "", tip: String = "", streak_lost
 	_perfect.visible = false
 	_total.visible = false
 	_new_theme.visible = false
+	_race_line.visible = false
 	_goal.visible = false
 	_banner_sub.add_theme_color_override("font_color", GOLD)
 	set_lose_offer(offer)
@@ -683,6 +796,7 @@ func set_play_visible(on: bool) -> void:
 		c.visible = on
 	_streak.visible = on and _streak.count >= GameData.WIN_STREAK_SHOW
 	if not on:
+		_race_pop.visible = false
 		hide_hold()
 		hide_banner()
 		_intro.visible = false

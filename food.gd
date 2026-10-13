@@ -19,6 +19,10 @@ const APPLE_RADIUS := 16.0
 const OUTLINE := Color(0.30, 0.19, 0.12)
 
 var kind: int = Kind.SANDWICH
+var golden := false:             # Panda Yarışı: üstünde altın bambu jetonu taşır
+	set(v):
+		golden = v
+		queue_redraw()
 var shape: Shape2D
 var half_w := 0.0
 var half_h := 0.0
@@ -84,6 +88,8 @@ static func _polygon_for(k: int) -> PackedVector2Array:
 
 func _draw() -> void:
 	paint(self, kind)
+	if golden:
+		Race.coin(self, Vector2(half_w * 0.5, -half_h - 6.0), 12.0)
 
 # Yiyeceğin görseli (çıkartma tarzı: koyu kontur, üstte ışık, altta gölge);
 # HUD'daki küçük ilerleme simgeleri de bunu kullanır (çağıran draw_set_transform ile ölçekler).

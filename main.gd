@@ -99,6 +99,8 @@ var _panda_tip_logged := false   # analitik: panda_tip_shown oturumda bir kez
 var _continue_used := false      # bu denemede Continue kullanıldı mı (deneme başına 1)
 var _lose_cause := ""            # "tilt" | "panda"
 var _streak_lost := 0            # bu kayıpla sıfırlanan galibiyet serisi (Continue geri verir)
+var _golden := {}                # Panda Yarışı: altın bambulu yiyeceklerin sıra no'ları (seq -> true)
+var _race_pop := {}              # "Next"e basınca açılacak yarış kartı (level_hud.show_race); {} = yok
 var _snap := {}                  # son yiyecek bırakılmadan hemen önceki alan (devrilince geri sarmak için)
 var _review: ReviewPrompt
 var _beam_held := false          # Continue sonrası kiriş, sıradaki yiyecek değene kadar sabit
@@ -148,6 +150,7 @@ func _ready() -> void:
 	_review = ReviewPrompt.new()
 	add_child(_review)
 	hud.next_pressed.connect(_on_next)
+	hud.race_continue.connect(_on_next)
 	hud.retry_pressed.connect(func():
 		if not Ads.busy():
 			_start_level(level, true))
@@ -201,6 +204,11 @@ func _start_level(n: int, retry: bool = false) -> void:
 	_level_msec = Time.get_ticks_msec()
 	Analytics.log_event("level_start", {"level": level, "retry": 1 if retry else 0})
 	_rng.seed = level * 104729   # kirişten düşen yiyeceğin yedeği de her denemede aynı gelsin
+	Race.ensure_started()
+	_golden = {}
+	if Race.active():
+		for i in Race.golden_seqs(level, _level_data["foods"].size()):
+			_golden[i] = true
 	_seq_index = 0
 	phase = Phase.PLAYING
 	panda_hits = 0
@@ -214,9 +222,10 @@ func _start_level(n: int, retry: bool = false) -> void:
 	_swap_pressing = false
 	hud.set_play_visible(true)
 	_reset_field()
-	hud.setup_level(level, _level_data["foods"], _level_data["hint"])
+	hud.setup_level(level, _level_data["foods"], _level_data["hint"], _golden.keys())
 	hud.reset_lives(MAX_PANDA_HITS)
 	_streak_lost = 0
+	_race_pop = {}
 	hud.set_win_streak(GameData.win_streak, false)
 	var intro: float = 0.35 if retry else INTRO_SECONDS
 	if not retry:
@@ -430,6 +439,28 @@ func _win() -> void:
 	var streak_bonus := GameData.win_streak_bonus(GameData.win_streak)
 	if streak_bonus > 0:
 		rewards.append(["Win streak x%d" % GameData.win_streak, streak_bonus])
+	# Panda Yarışı: yerinde duran altın bambular x seri çarpanı (yalnız kazanınca)
+	var race := {}
+	var race_opened := false
+	if Race.active():
+		var golden := 0
+		for f in food_container.get_children():
+			if f is Food and f.golden and f.get_meta("landed", false) and not f.get_meta("gone", false) and not f.get_meta("lost", false):
+				golden += 1
+		var mult := Race.multiplier(GameData.win_streak)
+		var before := Race.standings()
+		race = {"golden": golden, "mult": mult, "points": golden * mult, "old_rank": Race.rank()}
+		if race["points"] > 0:
+			GameData.add_race_points(race["points"])
+		race["rank"] = Race.rank()
+		if race["rank"] < race["old_rank"]:
+			_race_pop = _rank_up_pop(before, Race.standings(), race)
+	elif Race.ensure_started():
+		race_opened = true   # 8. seviye: yarış şimdi açıldı
+		var rows := Race.standings()
+		_race_pop = {"title": "Panda Race!", "sub": "Beat the animals in 3 days!",
+			"msg": "Win levels with golden bamboo.\nWin streaks multiply it!", "button": "Let's go!",
+			"old": rows, "new": rows, "animate": false, "intro": true}
 	_reward = 0
 	for r in rewards:
 		_reward += r[1]
@@ -444,11 +475,13 @@ func _win() -> void:
 		"hard": 1 if Levels.is_peak(level) else 0,
 		"reward": _reward,
 		"win_streak": GameData.win_streak,
+		"race_points": race.get("points", 0),
 	})
 	beam_visual.modulate = Color.WHITE
 	hud.show_win(level, rewards, _reward, panda_hits == 0 and _drops == 0, Accessories.next_goal(GameData.owned),
 		GameData.bamboo, GameData.sunset_unlocked() and not had_sunset, Ads.rewarded_ready())
 	hud.set_win_streak(GameData.win_streak, true)
+	hud.set_race_result(race, race_opened)
 	panda.celebrate()
 	GameData.vibrate(60)
 	if level >= REVIEW_MIN_LEVEL and panda_hits == 0:
@@ -526,6 +559,7 @@ func _try_swap() -> void:
 	f.collision_mask = 0
 	f.position = old.position
 	f.set_meta("seq", old.get_meta("seq", -1))
+	f.golden = old.golden
 	food_container.remove_child(old)
 	old.queue_free()
 	food_container.add_child(f)
@@ -570,9 +604,31 @@ func _on_ad_double() -> void:
 		Sfx.play("reward_big")
 		hud.set_ad_visible(false))
 
-# "Next": kurallar uygunsa (Ads.after_level) önce geçiş reklamı, sonra sonraki seviye.
+# Sıralamada yükselince "Next" sonrası kart: kimi geçti, yeni sırası.
+func _rank_up_pop(before: Array, after: Array, race: Dictionary) -> Dictionary:
+	var you := 0
+	for i in after.size():
+		if after[i]["you"]:
+			you = i
+	var passed: int = race["old_rank"] - race["rank"]
+	var msg := "You passed %s!" % after[you + 1]["name"] if passed == 1 else "You passed %d racers!" % passed
+	msg += "\nNow %s place" % Race.ordinal(race["rank"])
+	return {"title": "Panda Race", "sub": "Ends in %s" % Race.format_left(Race.time_left()), "msg": msg,
+		"button": "Continue", "old": before, "new": after, "animate": true}
+
+# "Next": önce bekleyen yarış kartı (kartın "Continue"su buraya döner), sonra kurallar
+# uygunsa (Ads.after_level) geçiş reklamı ve sonraki seviye.
 func _on_next() -> void:
 	if phase != Phase.WON or Ads.busy():
+		return
+	if not _race_pop.is_empty():
+		var p := _race_pop
+		_race_pop = {}
+		if p.get("intro", false):
+			GameData.race_seen = true   # menüdeki tek seferlik tanıtım artık gerekmez
+			GameData.save()
+		Analytics.log_event("race_card", {"kind": "intro" if p.get("intro", false) else "rank_up", "level": level})
+		hud.show_race(p)
 		return
 	var n := level + 1
 	Ads.after_level(level, func():
@@ -643,7 +699,7 @@ func _take_snapshot(f: Food) -> void:
 	for g in food_container.get_children():
 		if g is Food and g != f and g.get_meta("landed", false) and not g.get_meta("gone", false) and not g.get_meta("lost", false):
 			foods.append({"kind": g.kind, "xf": g.global_transform, "lv": g.linear_velocity,
-				"av": g.angular_velocity, "seq": g.get_meta("seq", -1)})
+				"av": g.angular_velocity, "seq": g.get_meta("seq", -1), "golden": g.golden})
 	_snap = {
 		"beam_xf": PhysicsServer2D.body_get_state(rid, PhysicsServer2D.BODY_STATE_TRANSFORM),
 		"beam_av": PhysicsServer2D.body_get_state(rid, PhysicsServer2D.BODY_STATE_ANGULAR_VELOCITY),
@@ -680,6 +736,7 @@ func _restore_snapshot() -> void:
 		g.setup(d["kind"])
 		g.set_meta("landed", true)
 		g.set_meta("seq", d["seq"])
+		g.golden = d.get("golden", false)
 		var fx: Transform2D = d["xf"]
 		# FoodContainer dünya orijininde; yığın pivot etrafında kirişle aynı açıda döner
 		g.transform = Transform2D(fx.get_rotation() + turn, pivot.position + (fx.origin - pivot.position).rotated(turn))
@@ -695,6 +752,7 @@ func _restore_snapshot() -> void:
 	var f := Food.new()
 	f.setup(_snap["kind"])
 	f.set_meta("seq", _snap["seq"])
+	f.golden = _golden.has(_snap["seq"])
 	f.freeze = true
 	f.collision_layer = 0
 	f.collision_mask = 0
@@ -918,6 +976,7 @@ func _spawn_food() -> void:
 	f.setup(_next_kind())
 	# seviye listesindeki sırası (ilerleme şeridindeki simgesi); havuzdan geldiyse -1
 	f.set_meta("seq", seq_before if _seq_index > seq_before else -1)
+	f.golden = _golden.has(f.get_meta("seq"))
 	f.freeze = true
 	f.gravity_scale = 1.0
 	# Donmuşken (düz iniş sırasında) çarpışma tamamen kapalı — donmuş cisim

@@ -2,8 +2,8 @@ class_name Accessories
 
 # Panda aksesuarları: katalog + çizimler. Dört yuva var: "head" (baş), "face"
 # (yüz), "neck" (boyun), "mouth" (ağız); her yuvada aynı anda bir parça takılır. Parçalar
-# bambuyla (GameData.bamboo) alınır; Golden Crown satılmaz, 7 günlük serinin
-# ödülüdür. Çizimler PandaArt'ın kendi koordinatlarında (orijin = oturma çizgisi,
+# bambuyla (GameData.bamboo) alınır; Golden Crown (7 günlük seri) ve Gold Medal
+# (Panda Yarışı birinciliği) satılmaz, ödüldür. Çizimler PandaArt'ın kendi koordinatlarında (orijin = oturma çizgisi,
 # kafa merkezi (0, -68)) ve onun sticker tarzında: koyu kontur, düz renk, parıltı.
 # Oyunda panda küçük — ayrıntı yerine kalın, okunur şekiller.
 
@@ -17,6 +17,8 @@ const LIST := [
 	{"id": "chef", "name": "Chef Hat", "slot": "head", "price": 1000},
 	# satın alınamaz: 7 günlük seri ödülü (GameData.claim_daily)
 	{"id": "crown", "name": "Golden Crown", "slot": "head", "price": 0, "streak": true},
+	# satın alınamaz: Panda Yarışı birinciliği (race.gd)
+	{"id": "medal", "name": "Gold Medal", "slot": "neck", "price": 0, "race": true},
 ]
 const SLOTS := ["head", "face", "neck", "mouth"]
 
@@ -32,11 +34,18 @@ static func get_item(id: String) -> Dictionary:
 static func is_streak_item(a: Dictionary) -> bool:
 	return a.get("streak", false)
 
+static func is_race_item(a: Dictionary) -> bool:
+	return a.get("race", false)
+
+# Satılmayan, ödülle kazanılan parça.
+static func is_reward_item(a: Dictionary) -> bool:
+	return is_streak_item(a) or is_race_item(a)
+
 # Henüz alınmamış en ucuz parça (kazanma kartındaki "sıradaki hedef"); yoksa {}.
 static func next_goal(owned: Array) -> Dictionary:
 	var best := {}
 	for a in LIST:
-		if a["id"] in owned or is_streak_item(a):
+		if a["id"] in owned or is_reward_item(a):
 			continue
 		if best.is_empty() or a["price"] < best["price"]:
 			best = a
@@ -53,6 +62,7 @@ static func draw(ci: CanvasItem, id: String, arms_up: bool = false) -> void:
 		"headphones": _headphones(ci)
 		"chef": _chef(ci)
 		"crown": _crown(ci)
+		"medal": _medal(ci)
 
 # --- yardımcılar ---
 
@@ -229,3 +239,20 @@ static func _crown(ci: CanvasItem) -> void:
 	ci.draw_circle(xf * Vector2(-10, -3.5), 2.6, Color(0.3, 0.6, 1.0))
 	ci.draw_circle(xf * Vector2(10, -3.5), 2.6, Color(0.3, 0.6, 1.0))
 	ci.draw_line(xf * Vector2(-14, -11), xf * Vector2(-12, -3), Color(1, 1, 1, 0.6), 2.0, true)
+
+# Altın madalya (yarış birinciliği): boyundan inen mavi-kırmızı kurdele, altın disk,
+# ortada yıldız. Önlük gibi kafanın ve kolların altında çizilir.
+static func _medal(ci: CanvasItem) -> void:
+	for s in [-1.0, 1.0]:
+		var strip := PackedVector2Array([Vector2(s * 15, -47), Vector2(s * 6, -47), Vector2(s * 1, -27), Vector2(s * 8, -27)])
+		_blob(ci, strip, Color(0.27, 0.5, 0.95) if s < 0 else Color(0.93, 0.28, 0.33))
+	var c := Vector2(0, -21)
+	ci.draw_circle(c, 11.5 + OUT, INK)
+	ci.draw_circle(c, 11.5, Color(1.0, 0.8, 0.22))
+	ci.draw_circle(c + Vector2(0.5, 1), 8.0, Color(0.95, 0.65, 0.12))
+	var star := PackedVector2Array()
+	for i in 10:
+		var r := 6.0 if i % 2 == 0 else 2.6
+		star.append(c + Vector2.from_angle(-PI / 2.0 + i * PI / 5.0) * r)
+	ci.draw_colored_polygon(star, Color(1.0, 0.9, 0.45))
+	ci.draw_arc(c, 9.0, PI * 1.1, PI * 1.5, 6, Color(1, 1, 1, 0.7), 2.0, true)

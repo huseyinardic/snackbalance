@@ -38,6 +38,10 @@ var outfit := {"head": "", "face": "", "neck": "", "mouth": ""}
 var theme := "day"
 var streak := 0
 var win_streak := 0              # art arda kazanılan seviye (günlük giriş serisi "streak"ten ayrı)
+var race_id := 0                 # Panda Yarışı (race.gd): kaçıncı yarış, başlangıcı, puanı
+var race_start := 0              # unix sn; 0 = henüz yarış yok
+var race_points := 0
+var race_seen := false           # yarış paneli (tanıtım) bir kez açıldı mı
 var last_day := ""               # en son oynanan gün (seri)
 var claimed_day := ""            # günlük ödülün en son alındığı gün
 var sunset_seen := false         # "yeni tema" kırmızı noktası görüldü mü
@@ -66,6 +70,10 @@ func load_data() -> void:
 	panda_tip_done = cfg.get_value("progress", "panda_tip_done", best_level > 2)
 	swaps = maxi(0, int(cfg.get_value("progress", "swaps", SWAP_START)))
 	win_streak = maxi(0, int(cfg.get_value("progress", "win_streak", 0)))
+	race_id = int(cfg.get_value("race", "id", 0))
+	race_start = int(cfg.get_value("race", "start", 0))
+	race_points = maxi(0, int(cfg.get_value("race", "points", 0)))
+	race_seen = cfg.get_value("race", "seen", false)
 	bamboo = maxi(0, int(cfg.get_value("economy", "bamboo", 0)))
 	owned = cfg.get_value("economy", "owned", [])
 	for slot in Accessories.SLOTS:
@@ -90,6 +98,10 @@ func save() -> void:
 	cfg.set_value("progress", "panda_tip_done", panda_tip_done)
 	cfg.set_value("progress", "swaps", swaps)
 	cfg.set_value("progress", "win_streak", win_streak)
+	cfg.set_value("race", "id", race_id)
+	cfg.set_value("race", "start", race_start)
+	cfg.set_value("race", "points", race_points)
+	cfg.set_value("race", "seen", race_seen)
 	cfg.set_value("economy", "bamboo", bamboo)
 	cfg.set_value("economy", "owned", owned)
 	for slot in Accessories.SLOTS:
@@ -148,6 +160,27 @@ func restore_win_streak(n: int) -> void:
 	win_streak = maxi(win_streak, n)
 	save()
 
+# --- Panda Yarışı ---
+
+func start_race(at: int) -> void:
+	race_id += 1
+	race_start = at
+	race_points = 0
+	save()
+
+func add_race_points(n: int) -> void:
+	race_points += n
+	save()
+
+# Biten yarışın ödülü (Race.prize sonucu): bambu, 1.lik madalyası giyilir; yeni yarış başlar.
+func claim_race(prize: Dictionary, next_start: int) -> void:
+	if prize["medal"] and Race.MEDAL not in owned:
+		owned.append(Race.MEDAL)
+		outfit["neck"] = Race.MEDAL
+	bamboo += prize["bamboo"]
+	start_race(next_start)
+	bamboo_changed.emit(bamboo)
+
 func use_swap() -> void:
 	swaps = maxi(0, swaps - 1)
 	save()
@@ -176,7 +209,7 @@ func add_bamboo(n: int) -> void:
 
 func can_buy(id: String) -> bool:
 	var a := Accessories.get_item(id)
-	return not a.is_empty() and not Accessories.is_streak_item(a) and id not in owned and bamboo >= a["price"]
+	return not a.is_empty() and not Accessories.is_reward_item(a) and id not in owned and bamboo >= a["price"]
 
 func buy(id: String) -> bool:
 	if not can_buy(id):

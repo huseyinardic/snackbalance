@@ -3,7 +3,7 @@ extends Control
 
 # Ana menü (UI CanvasLayer'da, oyun sahnesinin üstünde). Arkada canlı sahne
 # var: main.gd kamerayı pandaya yaklaştırır, panda menünün vitrini olur.
-#   üstte başlık + bambu sayacı, altta büyük PLAY, en altta Wardrobe / Themes / Daily.
+#   üstte başlık + bambu sayacı, altta büyük PLAY, en altta Wardrobe / (Race) / Themes / Daily.
 # Paneller (gardırop, temalar, günlük ödül) bu Control'ün içinde açılır; arkadaki
 # Blocker dokunuşları yutar, boşluğa dokunmak paneli kapatır.
 
@@ -24,6 +24,8 @@ var _play: UiKit.Btn
 var _btn_wardrobe: UiKit.Btn
 var _btn_themes: UiKit.Btn
 var _btn_daily: UiKit.Btn
+var _btn_race: UiKit.Btn
+var _bottom_btns: Array = []
 var _wardrobe: Control
 var _themes: Control
 var _daily: Control
@@ -36,6 +38,13 @@ var _day_cells: Array = []
 var _daily_sub: Label
 var _daily_info: Label
 var _claim: UiKit.Btn
+var _race: Control
+var _race_sub: Label
+var _race_info: Label
+var _race_board: RaceBoard
+var _race_result: Label
+var _race_claim: UiKit.Btn
+var _race_t := 0.0
 
 # Bambu sayacı: koyu hap içinde bambu simgesi + sayı; artınca sayarak yükselir.
 class BambooPill extends Control:
@@ -95,6 +104,8 @@ class ItemCell extends UiKit.Btn:
 			_tag("Owned", Color(0.4, 0.45, 0.4), y)
 		elif Accessories.is_streak_item(item):
 			_tag("Day 7", Color(0.85, 0.55, 0.1), y)
+		elif Accessories.is_race_item(item):
+			_tag("Race 1st", Color(0.55, 0.35, 0.85), y)
 		else:
 			var t := str(item["price"])
 			var tw := UiKit.BOLD.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, 28).x
@@ -198,6 +209,7 @@ func _ready() -> void:
 	_wardrobe = _build_wardrobe()
 	_themes = _build_themes()
 	_daily = _build_daily()
+	_race = _build_race()
 	_settings = _build_settings()
 	GameData.bamboo_changed.connect(func(v: int): _pill.set_value(v, true))
 	_apply_top_inset()
@@ -263,6 +275,7 @@ func _build_home() -> void:
 	pulse.tween_property(_play, "scale", Vector2.ONE, 0.7).set_trans(Tween.TRANS_SINE)
 
 	var defs := [["Wardrobe", UiKit.wardrobe, _open_wardrobe, Color(0.98, 0.55, 0.62)],
+		["Race", UiKit.flag, _open_race, Color(0.62, 0.45, 0.9)],
 		["Themes", UiKit.landscape, _open_themes, UiKit.BLUE],
 		["Daily", UiKit.gift, _open_daily, UiKit.ORANGE]]
 	var btns := []
@@ -283,19 +296,27 @@ func _build_home() -> void:
 		add_child(b)
 		btns.append(b)
 	_btn_wardrobe = btns[0]
-	_btn_themes = btns[1]
-	_btn_daily = btns[2]
+	_btn_race = btns[1]
+	_btn_themes = btns[2]
+	_btn_daily = btns[3]
+	_bottom_btns = btns
 
 # Açılış: main.gd kamerayı pandaya yaklaştırırken çağırır.
 func open(show_daily: bool) -> void:
 	visible = true
-	for p in [_wardrobe, _themes, _daily, _settings]:
+	for p in [_wardrobe, _themes, _daily, _settings, _race]:
 		p.visible = false
 	GameData.refresh_day()
 	refresh()
 	_pill.set_value(GameData.bamboo, false)
 	modulate.a = 0.0
 	create_tween().tween_property(self, "modulate:a", 1.0, 0.3)
+	# yarış sonucu ya da ilk tanıtım, günlük ödülden önce
+	if Race.unlocked():
+		Race.ensure_started()
+		if Race.is_over() or not GameData.race_seen:
+			_open_race()
+			return
 	if show_daily and GameData.daily_available():
 		_open_daily()
 
@@ -309,7 +330,7 @@ func back() -> bool:
 	if _wardrobe.visible:
 		_close_wardrobe()
 		return true
-	for p in [_themes, _daily, _settings]:
+	for p in [_themes, _daily, _settings, _race]:
 		if p.visible:
 			_close_panel(p)
 			return true
@@ -321,7 +342,17 @@ func refresh() -> void:
 	_btn_themes.badge = GameData.new_theme_badge()
 	var goal := Accessories.next_goal(GameData.owned)
 	_btn_wardrobe.badge = not goal.is_empty() and GameData.bamboo >= goal["price"]
-	for b in [_btn_daily, _btn_themes, _btn_wardrobe]:
+	# Race düğmesi yalnız yarış açılınca; alt sıra 3 ya da 4 düğmeye göre yayılır
+	_btn_race.visible = Race.unlocked()
+	_btn_race.badge = Race.unlocked() and (Race.is_over() or not GameData.race_seen)
+	_btn_race.text = Race.ordinal(Race.rank()) if Race.active() and GameData.race_points > 0 else "Race"
+	var shown := _bottom_btns.filter(func(b): return b.visible)
+	var sp := 190.0 if shown.size() <= 3 else 162.0
+	for i in shown.size():
+		var x := (i - (shown.size() - 1) / 2.0) * sp
+		shown[i].offset_left = x - 56.0
+		shown[i].offset_right = x + 56.0
+	for b in _bottom_btns:
 		b.queue_redraw()
 
 # --- panel iskeleti ---
@@ -404,7 +435,7 @@ func _close_panel(p: Control) -> void:
 # --- gardırop ---
 
 func _build_wardrobe() -> Control:
-	var parts := _panel(640.0, true, _close_wardrobe)
+	var parts := _panel(840.0, true, _close_wardrobe)   # 3 sıra parça
 	var box: VBoxContainer = parts[1]
 	_panel_title(parts[2], "Wardrobe")
 	var grid := GridContainer.new()
@@ -475,6 +506,9 @@ func _select_item(id: String) -> void:
 		_action.color = UiKit.GREEN
 	elif Accessories.is_streak_item(a):
 		_action.text = "7-day streak"
+		_action.enabled = false
+	elif Accessories.is_race_item(a):
+		_action.text = "Win a race"
 		_action.enabled = false
 	elif GameData.bamboo >= a["price"]:
 		_action.text = "Buy  %d" % a["price"]
@@ -632,6 +666,88 @@ func _on_claim() -> void:
 	t.tween_callback(func():
 		if _daily.visible:
 			_close_panel(_daily))
+
+# --- Panda Yarışı ---
+
+func _build_race() -> Control:
+	var parts := _panel(1040.0, false, func(): _close_panel(_race))
+	var box: VBoxContainer = parts[1]
+	box.add_theme_constant_override("separation", 8)
+	_panel_title(parts[2], "Panda Race")
+	_race_sub = UiKit.ink_label("", UiKit.BOLD, 30, Color(0.55, 0.35, 0.85))
+	box.add_child(_race_sub)
+	_race_info = UiKit.ink_label("Win levels with golden bamboo.\nWin streaks multiply it: x2, x4, x8!", UiKit.MED, 26,
+		Color(0.35, 0.33, 0.3))
+	box.add_child(_race_info)
+	_race_board = RaceBoard.new()
+	_race_board.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(_race_board)
+	_race_result = UiKit.ink_label("", UiKit.BOLD, 34, Color(0.85, 0.45, 0.1))
+	box.add_child(_race_result)
+	_race_claim = UiKit.btn("CLAIM", UiKit.GREEN, 360, 96, 44, _on_race_claim)
+	_race_claim.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(_race_claim)
+	return parts[0]
+
+func _open_race() -> void:
+	if not GameData.race_seen:
+		GameData.race_seen = true
+		GameData.save()
+	_refresh_race()
+	_show_panel(_race, false)
+
+func _refresh_race() -> void:
+	var over := Race.is_over()
+	_race_board.set_rows(Race.standings())
+	_race_info.visible = not over
+	_race_result.visible = over
+	_race_claim.visible = over
+	if over:
+		var r := Race.rank()
+		var p := Race.prize(r)
+		_race_sub.text = "Race over! You finished %s" % Race.ordinal(r)
+		var gets := []
+		if p["medal"]:
+			gets.append("Gold Medal")
+		if p["bamboo"] > 0:
+			gets.append("%d bamboo" % p["bamboo"])
+		_race_result.text = ("You win: " + " + ".join(gets)) if not gets.is_empty() else "A new race starts now!"
+		_race_claim.text = "CLAIM" if not gets.is_empty() else "NEXT RACE"
+	else:
+		_race_sub.text = "Ends in %s" % Race.format_left(Race.time_left())
+	_race_claim.queue_redraw()
+	# kart yüksekliği içeriğe göre (satır sayısı, sonuç/düğme), altta boşluk kalmasın
+	var card: Control = _race.get_child(1)
+	var h := 196.0 + _race_board.custom_minimum_size.y + (76.0 if not over else 170.0)
+	card.offset_top = -h / 2.0
+	card.offset_bottom = h / 2.0
+
+func _on_race_claim() -> void:
+	if not Race.is_over():
+		return
+	var r := Race.rank()
+	var p := Race.prize(r)
+	Analytics.log_event("race_end", {"race_id": GameData.race_id, "rank": r, "points": GameData.race_points})
+	if p["bamboo"] > 0 or p["medal"]:
+		Analytics.log_event("race_reward", {"rank": r, "bamboo": p["bamboo"], "medal": 1 if p["medal"] else 0})
+		GameData.vibrate(40)
+		Sfx.play("buy")
+	GameData.claim_race(p, Race.now())
+	Analytics.log_event("race_start", {"race_id": GameData.race_id, "level": GameData.level})
+	if p["medal"]:
+		outfit_preview.emit(GameData.outfit.duplicate())
+	_celebrate(_race_claim)
+	_refresh_race()
+	refresh()
+
+# Açık yarış panelinde kalan süre saniyede bir güncellenir.
+func _process(delta: float) -> void:
+	if _race == null or not _race.visible:
+		return
+	_race_t += delta
+	if _race_t >= 1.0:
+		_race_t = 0.0
+		_refresh_race()
 
 # --- ayarlar ---
 

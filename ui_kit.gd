@@ -258,6 +258,21 @@ static func _drop(ci: CanvasItem, c: Vector2, r: float, rot: float, col: Color, 
 		pts[i] = c + pts[i].rotated(rot)
 	ci.draw_colored_polygon(pts, col)
 
+# Damalı yarış bayrağı (Panda Yarışı düğmesi).
+static func flag(ci: CanvasItem, c: Vector2, s: float) -> void:
+	var top := c + Vector2(-s * 0.26, -s * 0.4)
+	ci.draw_line(top, c + Vector2(-s * 0.26, s * 0.42), INK, s * 0.11, true)
+	ci.draw_line(top, c + Vector2(-s * 0.26, s * 0.42), Color.WHITE, s * 0.05, true)
+	var w := s * 0.62
+	var h := s * 0.42
+	var cols := 4
+	var rows := 3
+	ci.draw_rect(Rect2(top + Vector2(-2, -2), Vector2(w + 4, h + 4)), INK)
+	for i in cols:
+		for j in rows:
+			var col := Color.WHITE if (i + j) % 2 == 0 else Color(0.2, 0.2, 0.24)
+			ci.draw_rect(Rect2(top + Vector2(w * i / cols, h * j / rows), Vector2(w / cols + 0.5, h / rows + 0.5)), col)
+
 static func play(ci: CanvasItem, c: Vector2, s: float) -> void:
 	var r := s * 0.42
 	ci.draw_colored_polygon(PackedVector2Array([c + Vector2(-r * 0.7, -r), c + Vector2(r, 0), c + Vector2(-r * 0.7, r)]), Color.WHITE)
