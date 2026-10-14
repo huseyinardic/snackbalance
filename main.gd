@@ -488,11 +488,12 @@ func _win() -> void:
 		_ask_review_later()
 
 # Oyuncunun en mutlu anı: kazanma kartı açıldıktan biraz sonra (konfeti, "PERFECT").
-# Geçiş reklamı "Next"ten sonra geldiği için pencereyle çakışmaz.
+# "Next"e erken basılıp reklam açıldıysa sorma (pencere reklamın üstüne çıkıp boşa giderdi);
+# tersine, pencere hazırlanırken basılan "Next" reklamsız geçer (_on_next).
 func _ask_review_later() -> void:
 	var lv := level
 	await get_tree().create_timer(1.2).timeout
-	if phase == Phase.WON and level == lv:
+	if phase == Phase.WON and level == lv and not Ads.busy():
 		_review.maybe_ask("level_win")
 
 # cause: analitik için kısa kod ("tilt" = devrildi, "panda" = pandaya 2. vuruş)
@@ -631,6 +632,9 @@ func _on_next() -> void:
 		hud.show_race(p)
 		return
 	var n := level + 1
+	if _review.busy():         # değerlendirme penceresi hazırlanıyor/açık: bu sefer reklam yok
+		_start_level(n)
+		return
 	Ads.after_level(level, func():
 		if phase == Phase.WON and level == n - 1:
 			_start_level(n))

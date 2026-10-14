@@ -11,9 +11,11 @@ extends Node
 const SAVE_PATH := "user://review.cfg"
 const MAX_ASKS := 3
 const MIN_DAYS := 30
+const BUSY_MAX_MS := 10000    # Google pencereyi hazırlayamazsa reklamları en fazla bu kadar beklet
 
 var _review: InappReview = null
 var _busy := false
+var _busy_since := 0
 var _context := ""
 
 func _ready() -> void:
@@ -42,6 +44,7 @@ func maybe_ask(context: String) -> void:
 	if not can_ask():
 		return
 	_busy = true
+	_busy_since = Time.get_ticks_msec()
 	_context = context
 	# Google göstermese de deneme sayılır: aynı oyuncuyu her fırsatta yoklamayalım
 	var cfg := ConfigFile.new()
@@ -51,6 +54,11 @@ func maybe_ask(context: String) -> void:
 	cfg.save(SAVE_PATH)
 	Analytics.log_event("review_prompt", {"context": context})
 	_review.generate_review_info()
+
+# Google pencereyi hazırlıyor ya da gösteriyor: bu arada geçiş reklamı açılmasın
+# (hazırlık birkaç saniye sürebiliyor; pencere reklamın üstüne çıkıp boşa gidiyordu).
+func busy() -> bool:
+	return _busy and Time.get_ticks_msec() - _busy_since < BUSY_MAX_MS
 
 func _fail(stage: String) -> void:
 	_busy = false
