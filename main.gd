@@ -164,6 +164,9 @@ func _ready() -> void:
 	hud.resume_pressed.connect(_resume)
 	menu = MenuUi.new()
 	$UI.add_child(menu)
+	var reminders := Reminders.new()   # günlük hediye / Panda Yarışı hatırlatması (yerel bildirim)
+	add_child(reminders)
+	menu.reminders = reminders
 	menu.play_pressed.connect(_on_play)
 	menu.outfit_preview.connect(func(o: Dictionary): panda.set_outfit(o))
 	menu.theme_picked.connect(func(t: String): backdrop.set_mood(t))

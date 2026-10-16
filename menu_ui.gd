@@ -37,6 +37,8 @@ var _theme_cards: Array = []
 var _day_cells: Array = []
 var _daily_sub: Label
 var _daily_info: Label
+var _daily_ask: VBoxContainer       # hediyeden sonra "hatırlatayım mı?" (Claim düğmesinin yerine)
+var reminders: Reminders            # main atar; yerel bildirim (yalnız Android)
 var _claim: UiKit.Btn
 var _race: Control
 var _race_sub: Label
@@ -610,6 +612,21 @@ func _build_daily() -> Control:
 	_claim = UiKit.btn("CLAIM", UiKit.GREEN, 360, 100, 44, _on_claim)
 	_claim.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	box.add_child(_claim)
+	# hediye alındıktan hemen sonra: bir sonraki hediye ve yarış için hatırlatma izni
+	_daily_ask = VBoxContainer.new()
+	_daily_ask.add_theme_constant_override("separation", 12)
+	_daily_ask.visible = false
+	var q := UiKit.ink_label("Want a reminder when
+your next gift is ready?", UiKit.BOLD, 30, Color(0.85, 0.45, 0.1))
+	q.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_daily_ask.add_child(q)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 16)
+	row.add_child(UiKit.btn("REMIND ME", UiKit.GREEN, 270, 92, 34, _on_reminder.bind(true)))
+	row.add_child(UiKit.btn("NO THANKS", UiKit.GREY, 220, 92, 28, _on_reminder.bind(false)))
+	_daily_ask.add_child(row)
+	box.add_child(_daily_ask)
 	return parts[0]
 
 func _open_daily() -> void:
@@ -647,6 +664,8 @@ func _refresh_daily() -> void:
 		lines.append("Today: Golden Crown!")
 	_daily_info.text = "\n".join(lines) if can else "Come back tomorrow for more!"
 	_claim.enabled = can
+	_claim.visible = true
+	_daily_ask.visible = false
 	_claim.text = "CLAIM" if can else "CLAIMED"
 	_claim.queue_redraw()
 
@@ -661,11 +680,30 @@ func _on_claim() -> void:
 		outfit_preview.emit(GameData.outfit.duplicate())
 	_refresh_daily()
 	_celebrate(_claim)
+	if reminders:
+		reminders.refresh()            # bugünkü alındı: hatırlatma yarına / yarışa kayar
+		if reminders.should_ask():
+			var a := create_tween()
+			a.tween_interval(0.7)
+			a.tween_callback(func():
+				_claim.visible = false
+				_daily_ask.visible = true
+				_daily_ask.modulate.a = 0.0)
+			a.tween_property(_daily_ask, "modulate:a", 1.0, 0.25)
+			return
 	var t := create_tween()
 	t.tween_interval(0.9)
 	t.tween_callback(func():
 		if _daily.visible:
 			_close_panel(_daily))
+
+func _on_reminder(yes: bool) -> void:
+	if not _daily_ask.visible:
+		return
+	_daily_ask.visible = false
+	reminders.answer(yes)
+	if _daily.visible:
+		_close_panel(_daily)
 
 # --- Panda Yarışı ---
 
