@@ -33,6 +33,7 @@ const REWARD_ASSUME_MS := 15000   # bu kadar izlendiyse ödül callback'i gelmes
 
 var _mobile := false
 var _initialized := false
+var _ready_sdk := false           # MobileAds başlatması bitti (yalnız bundan sonra yükleme)
 var _interstitial: InterstitialAd
 var _rewarded: RewardedAd
 var _interstitial_cb := InterstitialAdLoadCallback.new()
@@ -103,12 +104,21 @@ func _initialize() -> void:
 	_initialized = true
 	_apply_analytics_consent()
 	consent_ready.emit()
-	MobileAds.initialize()
+	var on_init := OnInitializationCompleteListener.new()
+	on_init.on_initialization_complete = func(_s): _ready_sdk = true
+	MobileAds.initialize(on_init)
 	var conf := RequestConfiguration.new()
 	# alan Array[String]: tipsiz sabit doğrudan atanınca hata verip reklam yüklemeyi durduruyordu
 	conf.test_device_ids.assign(TEST_DEVICES)   # bu telefonlarda release'de bile test reklamı
 	MobileAds.set_request_configuration(conf)
-	await get_tree().create_timer(0.1).timeout
+	# Reklamlar yalnız MobileAds başlatması BİTİNCE yüklenir: erken yükleme yavaş telefonlarda
+	# oyunu çökertiyordu ("MobileAds.initialize must be called before using the Google Mobile
+	# Ads SDK" — moto g24, Galaxy A2 Core). Hızlı telefonda başlatma 0,1 sn'de bittiği için fark
+	# edilmemişti.
+	var waited := 0.0
+	while not _ready_sdk and waited < 60.0:
+		await get_tree().create_timer(0.25).timeout
+		waited += 0.25
 	_load_interstitial()
 	_load_rewarded()
 
@@ -148,6 +158,8 @@ func show_privacy_options() -> void:
 # --- geçiş reklamı ---
 
 func _load_interstitial() -> void:
+	if not _ready_sdk:
+		return
 	var id := INTERSTITIAL_ID_TEST if _use_test_ids() else INTERSTITIAL_ID
 	InterstitialAdLoader.new().load(id, AdRequest.new(), _interstitial_cb)
 
@@ -193,6 +205,8 @@ func _mark_ad_shown() -> void:
 # --- ödüllü reklam ---
 
 func _load_rewarded() -> void:
+	if not _ready_sdk:
+		return
 	var id := REWARDED_ID_TEST if _use_test_ids() else REWARDED_ID
 	RewardedAdLoader.new().load(id, AdRequest.new(), _rewarded_cb)
 
