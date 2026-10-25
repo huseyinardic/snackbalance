@@ -116,7 +116,12 @@ class ItemCell extends UiKit.Btn:
 			var col := UiKit.INK if GameData.bamboo >= item["price"] else Color(0.6, 0.5, 0.45)
 			draw_string(UiKit.BOLD, Vector2(x + 34, y), t, HORIZONTAL_ALIGNMENT_LEFT, -1, 28, col)
 	func _tag(t: String, col: Color, y: float) -> void:
-		draw_string(UiKit.BOLD, Vector2(0, y), tr(t), HORIZONTAL_ALIGNMENT_CENTER, size.x, 26, col)
+		var s := tr(t)
+		var fs := 26                                     # uzun çevirilerde küçülür
+		var tw := UiKit.BOLD.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		if tw > size.x - 8:
+			fs = maxi(14, int(fs * (size.x - 8) / tw))
+		draw_string(UiKit.BOLD, Vector2(0, y), s, HORIZONTAL_ALIGNMENT_CENTER, size.x, fs, col)
 
 # Tema kartı: temanın renkleriyle küçük manzara; kilitliyse karartılmış + kilit + koşul.
 class ThemeCard extends UiKit.Btn:
