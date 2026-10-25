@@ -441,7 +441,7 @@ func _win() -> void:
 		Analytics.log_event("chapter_complete", {"chapter": level / GameData.CHAPTER_SIZE})
 	var streak_bonus := GameData.win_streak_bonus(GameData.win_streak)
 	if streak_bonus > 0:
-		rewards.append(["Win streak x%d" % GameData.win_streak, streak_bonus])
+		rewards.append([tr("Win streak x%d") % GameData.win_streak, streak_bonus])
 	# Panda Yarışı: yerinde duran altın bambular x seri çarpanı (yalnız kazanınca)
 	var race := {}
 	var race_opened := false
@@ -615,9 +615,9 @@ func _rank_up_pop(before: Array, after: Array, race: Dictionary) -> Dictionary:
 		if after[i]["you"]:
 			you = i
 	var passed: int = race["old_rank"] - race["rank"]
-	var msg := "You passed %s!" % after[you + 1]["name"] if passed == 1 else "You passed %d racers!" % passed
-	msg += "\nNow %s place" % Race.ordinal(race["rank"])
-	return {"title": "Panda Race", "sub": "Ends in %s" % Race.format_left(Race.time_left()), "msg": msg,
+	var msg := tr("You passed %s!") % after[you + 1]["name"] if passed == 1 else tr("You passed %d racers!") % passed
+	msg += tr("\nNow %s place") % I18n.ordinal(race["rank"])
+	return {"title": "Panda Race", "sub": tr("Ends in %s") % Race.format_left(Race.time_left()), "msg": msg,
 		"button": "Continue", "old": before, "new": after, "animate": true}
 
 # "Next": önce bekleyen yarış kartı (kartın "Continue"su buraya döner), sonra kurallar

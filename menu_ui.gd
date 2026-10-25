@@ -116,7 +116,7 @@ class ItemCell extends UiKit.Btn:
 			var col := UiKit.INK if GameData.bamboo >= item["price"] else Color(0.6, 0.5, 0.45)
 			draw_string(UiKit.BOLD, Vector2(x + 34, y), t, HORIZONTAL_ALIGNMENT_LEFT, -1, 28, col)
 	func _tag(t: String, col: Color, y: float) -> void:
-		draw_string(UiKit.BOLD, Vector2(0, y), t, HORIZONTAL_ALIGNMENT_CENTER, size.x, 26, col)
+		draw_string(UiKit.BOLD, Vector2(0, y), tr(t), HORIZONTAL_ALIGNMENT_CENTER, size.x, 26, col)
 
 # Tema kartı: temanın renkleriyle küçük manzara; kilitliyse karartılmış + kilit + koşul.
 class ThemeCard extends UiKit.Btn:
@@ -162,10 +162,10 @@ class ThemeCard extends UiKit.Btn:
 		if not unlocked:
 			draw_rect(r.grow(-2), Color(0.1, 0.1, 0.15, 0.55))
 			UiKit.lock(self, r.get_center() + Vector2(0, -24), 56.0)
-			draw_string(UiKit.BOLD, Vector2(0, r.get_center().y + 44), "Beat level %d" % GameData.SUNSET_LEVEL,
+			draw_string(UiKit.BOLD, Vector2(0, r.get_center().y + 44), tr("Beat level %d") % GameData.SUNSET_LEVEL,
 				HORIZONTAL_ALIGNMENT_CENTER, size.x, 28, Color.WHITE)
 		draw_style_box(frame, r)
-		var label := title + ("  ✓" if sel else "")
+		var label := tr(title) + ("  ✓" if sel else "")
 		draw_string(UiKit.BOLD, Vector2(0, size.y - 14 + press), label, HORIZONTAL_ALIGNMENT_CENTER, size.x, 32,
 			UiKit.INK if unlocked else Color(0.45, 0.42, 0.4))
 
@@ -190,7 +190,7 @@ class DayCell extends Control:
 		sb.border_color = UiKit.GOLD.darkened(0.15 * glow) if today else Color(0.8, 0.76, 0.66)
 		sb.set_border_width_all(5 if today else 3)
 		draw_style_box(sb, Rect2(Vector2.ZERO, size))
-		draw_string(UiKit.BOLD, Vector2(0, 28), "Day %d" % day, HORIZONTAL_ALIGNMENT_CENTER, size.x, 22, UiKit.INK)
+		draw_string(UiKit.BOLD, Vector2(0, 28), tr("Day %d") % day, HORIZONTAL_ALIGNMENT_CENTER, size.x, 22, UiKit.INK)
 		var c := Vector2(size.x / 2.0, size.y * 0.55)
 		if crown:
 			draw_set_transform(c - Vector2(2, -108) * 1.25, 0.0, Vector2(1.25, 1.25))
@@ -347,7 +347,7 @@ func refresh() -> void:
 	# Race düğmesi yalnız yarış açılınca; alt sıra 3 ya da 4 düğmeye göre yayılır
 	_btn_race.visible = Race.unlocked()
 	_btn_race.badge = Race.unlocked() and (Race.is_over() or not GameData.race_seen)
-	_btn_race.text = Race.ordinal(Race.rank()) if Race.active() and GameData.race_points > 0 else "Race"
+	_btn_race.text = I18n.ordinal(Race.rank()) if Race.active() and GameData.race_points > 0 else "Race"
 	var shown := _bottom_btns.filter(func(b): return b.visible)
 	var sp := 190.0 if shown.size() <= 3 else 162.0
 	for i in shown.size():
@@ -513,11 +513,11 @@ func _select_item(id: String) -> void:
 		_action.text = "Win a race"
 		_action.enabled = false
 	elif GameData.bamboo >= a["price"]:
-		_action.text = "Buy  %d" % a["price"]
+		_action.text = tr("Buy  %d") % a["price"]
 		_action.color = UiKit.GREEN
 		_action.icon = UiKit.bamboo
 	else:
-		_action.text = "Need %d more" % (a["price"] - GameData.bamboo)
+		_action.text = tr("Need %d more") % (a["price"] - GameData.bamboo)
 		_action.enabled = false
 	_action.queue_redraw()
 	for c in _cells:
@@ -616,8 +616,7 @@ func _build_daily() -> Control:
 	_daily_ask = VBoxContainer.new()
 	_daily_ask.add_theme_constant_override("separation", 12)
 	_daily_ask.visible = false
-	var q := UiKit.ink_label("Want a reminder when
-your next gift is ready?", UiKit.BOLD, 30, Color(0.85, 0.45, 0.1))
+	var q := UiKit.ink_label("Want a reminder when\nyour next gift is ready?", UiKit.BOLD, 30, Color(0.85, 0.45, 0.1))
 	q.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_daily_ask.add_child(q)
 	var row := HBoxContainer.new()
@@ -637,7 +636,7 @@ func _refresh_daily() -> void:
 	var p := GameData.daily_preview()
 	var today: int = p["day"]
 	var can := GameData.daily_available()
-	_daily_sub.text = "Day %d in a row!" % GameData.streak if GameData.streak > 1 else "Come back every day!"
+	_daily_sub.text = tr("Day %d in a row!") % GameData.streak if GameData.streak > 1 else "Come back every day!"
 	for c in _day_cells:
 		var d: int = c.day
 		c.crown = d == 7 and "crown" not in GameData.owned
@@ -659,10 +658,10 @@ func _refresh_daily() -> void:
 	var lines := []
 	if GameData.level >= SWAP_UNLOCK_LEVEL:
 		var n: int = maxi(GameData.swaps, GameData.DAILY_SWAPS) + p["extra_swaps"]
-		lines.append("Swaps refilled: %d" % n if p["extra_swaps"] == 0 else "Swaps refilled + 1 bonus: %d" % n)
+		lines.append(tr("Swaps refilled: %d") % n if p["extra_swaps"] == 0 else tr("Swaps refilled + 1 bonus: %d") % n)
 	if p["crown"]:
-		lines.append("Today: Golden Crown!")
-	_daily_info.text = "\n".join(lines) if can else "Come back tomorrow for more!"
+		lines.append(tr("Today: Golden Crown!"))
+	_daily_info.text = "\n".join(lines) if can else tr("Come back tomorrow for more!")
 	_claim.enabled = can
 	_claim.visible = true
 	_daily_ask.visible = false
@@ -743,16 +742,16 @@ func _refresh_race() -> void:
 	if over:
 		var r := Race.rank()
 		var p := Race.prize(r)
-		_race_sub.text = "Race over! You finished %s" % Race.ordinal(r)
+		_race_sub.text = tr("Race over! You finished %s") % I18n.ordinal(r)
 		var gets := []
 		if p["medal"]:
-			gets.append("Gold Medal")
+			gets.append(tr("Gold Medal"))
 		if p["bamboo"] > 0:
-			gets.append("%d bamboo" % p["bamboo"])
-		_race_result.text = ("You win: " + " + ".join(gets)) if not gets.is_empty() else "A new race starts now!"
+			gets.append(tr("%d bamboo") % p["bamboo"])
+		_race_result.text = (tr("You win: ") + " + ".join(gets)) if not gets.is_empty() else tr("A new race starts now!")
 		_race_claim.text = "CLAIM" if not gets.is_empty() else "NEXT RACE"
 	else:
-		_race_sub.text = "Ends in %s" % Race.format_left(Race.time_left())
+		_race_sub.text = tr("Ends in %s") % Race.format_left(Race.time_left())
 	_race_claim.queue_redraw()
 	# kart yüksekliği içeriğe göre (satır sayısı, sonuç/düğme), altta boşluk kalmasın
 	var card: Control = _race.get_child(1)
@@ -827,7 +826,7 @@ func _refresh_settings() -> void:
 	var state := {"music": GameData.music_on, "sfx": GameData.sfx_on, "vibration": GameData.vibration_on}
 	for key in _toggles:
 		var b: UiKit.Btn = _toggles[key]
-		b.text = "%s: %s" % [b.get_meta("label"), "On" if state[key] else "Off"]
+		b.text = "%s: %s" % [tr(b.get_meta("label")), tr("On") if state[key] else tr("Off")]
 		b.color = UiKit.GREEN if state[key] else UiKit.GREY
 		b.queue_redraw()
 	_privacy.visible = Ads.privacy_options_required()

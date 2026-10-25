@@ -118,7 +118,7 @@ func _draw_row(y: float, r: Dictionary, rank: int, score: int) -> void:
 		draw_circle(Vector2(28, cy), 14.5, MEDAL_COLS[rank - 1])
 	draw_string(UiKit.BOLD, Vector2(4, cy + 9), str(rank), HORIZONTAL_ALIGNMENT_CENTER, 48, 24, UiKit.INK)
 	_face(Vector2(80, cy), r["color"], you)
-	draw_string(UiKit.BOLD, Vector2(110, cy + 10), r["name"], HORIZONTAL_ALIGNMENT_LEFT, 260, 28,
+	draw_string(UiKit.BOLD, Vector2(110, cy + 10), tr(r["name"]) if r["you"] else r["name"], HORIZONTAL_ALIGNMENT_LEFT, 260, 28,
 		UiKit.INK if you else Color(0.3, 0.27, 0.25))
 	if rank <= 3:
 		if rank == 1:

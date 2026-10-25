@@ -47,8 +47,8 @@ func _on_initialized() -> void:
 	_ready_ok = true
 	_ns.create_notification_channel(NotificationChannel.new()
 		.set_id(CHANNEL_ID)
-		.set_name("Rewards & races")
-		.set_description("Daily gift and Panda Race reminders")
+		.set_name(tr("Rewards & races"))
+		.set_description(tr("Daily gift and Panda Race reminders"))
 		.set_importance(NotificationChannel.Importance.DEFAULT))
 	refresh()
 
@@ -92,11 +92,11 @@ func _plan() -> Dictionary:
 		var soon := _race_soon_time(end)
 		if soon > 0:
 			c.append({"kind": "race_soon", "at": soon,
-				"title": "Panda Race ends in %d hours! 🏁" % maxi(1, roundi((end - soon) / 3600.0)),
-				"text": "Win a few more levels to climb the leaderboard!"})
+				"title": tr("Panda Race ends in %d hours! 🏁") % maxi(1, roundi((end - soon) / 3600.0)),
+				"text": tr("Win a few more levels to climb the leaderboard!")})
 		c.append({"kind": "race_over", "at": _daytime_after(end),
-			"title": "The Panda Race is over! 🏅",
-			"text": "See where you finished and claim your prize."})
+			"title": tr("The Panda Race is over! 🏅"),
+			"text": tr("See where you finished and claim your prize.")})
 	var best: Dictionary = {}
 	for p: Dictionary in c:
 		if best.is_empty() or int(p["at"]) < int(best["at"]):
@@ -108,23 +108,23 @@ func _plan_daily() -> Dictionary:
 	var today_19 := _local_midnight(t) + HOUR * 3600
 	if GameData.daily_available() and t < today_19 - 3600:
 		var r := GameData.daily_preview()
-		return {"kind": "daily", "at": today_19, "title": "Your daily gift is waiting 🎁",
-			"text": "Claim +%d bamboo before the day ends!" % r["bamboo"] if not r["crown"]
-				else "The Golden Crown is waiting for your panda! 👑"}
+		return {"kind": "daily", "at": today_19, "title": tr("Your daily gift is waiting 🎁"),
+			"text": tr("Claim +%d bamboo before the day ends!") % r["bamboo"] if not r["crown"]
+				else tr("The Golden Crown is waiting for your panda! 👑")}
 	# yarın: seri bugün oynandıysa bir artar
 	var s: int = GameData.streak + 1 if GameData.last_day == GameData.today() else 1
 	var day: int = (s - 1) % 7 + 1
 	var at := today_19 + 86400
 	if day == 7 and "crown" not in GameData.owned:
-		return {"kind": "daily", "at": at, "title": "Day 7: the Golden Crown is waiting! 👑",
-			"text": "Come back and dress up your panda."}
+		return {"kind": "daily", "at": at, "title": tr("Day 7: the Golden Crown is waiting! 👑"),
+			"text": tr("Come back and dress up your panda.")}
 	var bamboo: int = GameData.STREAK_DAY7 if day == 7 else GameData.STREAK_REWARDS[day - 1]
 	if s >= 3:
-		return {"kind": "daily", "at": at, "title": "Don't lose your %d-day streak! 🔥" % (s - 1),
-			"text": "Day %d gift: +%d bamboo 🎋" % [s, bamboo]}
-	var swaps := " and fresh Swaps" if GameData.level >= SWAP_UNLOCK_LEVEL else ""
-	return {"kind": "daily", "at": at, "title": "Your daily gift is ready 🎁",
-		"text": "+%d bamboo%s are waiting!" % [bamboo, swaps]}
+		return {"kind": "daily", "at": at, "title": tr("Don't lose your %d-day streak! 🔥") % (s - 1),
+			"text": tr("Day %d gift: +%d bamboo 🎋") % [s, bamboo]}
+	var msg := "+%d bamboo and fresh Swaps are waiting!" if GameData.level >= SWAP_UNLOCK_LEVEL else "+%d bamboo are waiting!"
+	return {"kind": "daily", "at": at, "title": tr("Your daily gift is ready 🎁"),
+		"text": tr(msg) % bamboo}
 
 # Bitişten ~3 sa önce, gündüz saatine denk gelen ve en az 1 sa sonraki an (yoksa 0).
 func _race_soon_time(end: int) -> int:

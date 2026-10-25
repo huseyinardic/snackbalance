@@ -41,7 +41,7 @@ func _draw() -> void:
 	var first := first_level()
 	var n: int = GameData.CHAPTER_SIZE
 	# başlık
-	var title := "Level %d" % level
+	var title := tr("Level %d") % level
 	draw_string_outline(UiKit.BOLD, Vector2(0, 34), title, HORIZONTAL_ALIGNMENT_CENTER, W, 38, 10, UiKit.OUTLINE)
 	draw_string(UiKit.BOLD, Vector2(0, 34), title, HORIZONTAL_ALIGNMENT_CENTER, W, 38, Color.WHITE)
 	# galibiyet serisi (bonus başladıysa): başlığın sağında alev + "x3"

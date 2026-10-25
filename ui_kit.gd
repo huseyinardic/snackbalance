@@ -82,6 +82,7 @@ class Btn extends Control:
 	func _draw() -> void:
 		var base: Color = color if enabled else GREY
 		var press := 4.0 if _down != -2 else 0.0
+		var txt := tr(text)                # çeviri (I18n); bulunamazsa olduğu gibi
 		if circle:
 			var r := size.x / 2.0
 			var c := Vector2(r, r - 3.0)
@@ -94,9 +95,9 @@ class Btn extends Control:
 				icon.call(self, c + Vector2(0, press), icon_size if icon_size > 0.0 else r)
 			if text != "":
 				var y := size.x + font_size * 0.9
-				draw_string_outline(BOLD, Vector2(-40, y), text, HORIZONTAL_ALIGNMENT_CENTER, size.x + 80, font_size,
+				draw_string_outline(BOLD, Vector2(-40, y), txt, HORIZONTAL_ALIGNMENT_CENTER, size.x + 80, font_size,
 					maxi(6, font_size / 4), OUTLINE)
-				draw_string(BOLD, Vector2(-40, y), text, HORIZONTAL_ALIGNMENT_CENTER, size.x + 80, font_size, text_color)
+				draw_string(BOLD, Vector2(-40, y), txt, HORIZONTAL_ALIGNMENT_CENTER, size.x + 80, font_size, text_color)
 			if badge:
 				UiKit.badge(self, Vector2(size.x - 12, 12))
 			return
@@ -119,9 +120,15 @@ class Btn extends Control:
 		hi.set_corner_radius_all(rad - 4)
 		draw_style_box(hi, Rect2(8, press + 6, size.x - 16, h * 0.36))
 		# yazı (+ solda simge) ortada
-		var tw := BOLD.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x if text != "" else 0.0
+		var fs := font_size
+		var tw := BOLD.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x if text != "" else 0.0
 		var isz := icon_size if icon_size > 0.0 else font_size * 1.1
 		var gap := 12.0 if text != "" else 0.0
+		# uzun çeviri düğmeye sığmazsa yazı küçülür (Almanca/Portekizce İngilizceden uzun)
+		var room := size.x - 28.0 - ((isz + gap) if icon.is_valid() else 0.0)
+		if tw > room and tw > 0.0:
+			fs = maxi(14, int(fs * room / tw))
+			tw = BOLD.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 		var total := tw + ((isz + gap) if icon.is_valid() else 0.0)
 		var x := (size.x - total) / 2.0
 		var mid := press + h / 2.0
@@ -129,10 +136,10 @@ class Btn extends Control:
 			icon.call(self, Vector2(x + isz / 2.0, mid), isz)
 			x += isz + gap
 		if text != "":
-			var base_y := mid + font_size * 0.36
-			draw_string_outline(BOLD, Vector2(x, base_y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size,
-				maxi(6, font_size / 4), base.darkened(0.45))
-			draw_string(BOLD, Vector2(x, base_y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, text_color)
+			var base_y := mid + fs * 0.36
+			draw_string_outline(BOLD, Vector2(x, base_y), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs,
+				maxi(6, fs / 4), base.darkened(0.45))
+			draw_string(BOLD, Vector2(x, base_y), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, text_color)
 		if badge:
 			UiKit.badge(self, Vector2(size.x - 8, 8))
 

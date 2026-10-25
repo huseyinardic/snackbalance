@@ -53,6 +53,7 @@ var sfx_on := true
 var vibration_on := true
 
 func _ready() -> void:
+	I18n.setup()                     # çeviriler ilk iş: sonraki her metin telefonun dilinde
 	load_data()
 	refresh_day()
 

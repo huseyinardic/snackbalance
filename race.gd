@@ -145,20 +145,17 @@ static func prize(r: int) -> Dictionary:
 	return {"bamboo": b, "medal": medal}
 
 static func ordinal(r: int) -> String:
-	var suf := "th"
-	if r % 100 < 11 or r % 100 > 13:
-		suf = ["th", "st", "nd", "rd", "th", "th", "th", "th", "th", "th"][r % 10]
-	return "%d%s" % [r, suf]
+	return I18n.ordinal(r)
 
 static func format_left(sec: int) -> String:
 	var d := sec / 86400
 	var h := (sec % 86400) / 3600
 	var m := (sec % 3600) / 60
 	if d > 0:
-		return "%dd %dh" % [d, h]
+		return I18n.t("%dd %dh") % [d, h]
 	if h > 0:
-		return "%dh %dm" % [h, m]
-	return "%dm" % maxi(m, 1)
+		return I18n.t("%dh %dm") % [h, m]
+	return I18n.t("%dm") % maxi(m, 1)
 
 # Altın bambu jetonu: altın daire, içinde bambu (yiyecek rozeti, simgeler, panel).
 static func coin(ci: CanvasItem, c: Vector2, r: float) -> void:

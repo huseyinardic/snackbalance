@@ -47,7 +47,7 @@ func _draw() -> void:
 	else:
 		s = 1.0 + 0.03 * sin((_t - 0.4) * 6.0)
 	var font := UiKit.BOLD
-	var tw := font.get_string_size(TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
+	var tw := font.get_string_size(tr(TEXT), HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
 	var box := Rect2(OFFSET + Vector2(0, -FONT_SIZE - PAD.y * 2.0), Vector2(tw + PAD.x * 2.0, FONT_SIZE + PAD.y * 2.0))
 	# kuyruk köşesinden ölçeklensin: baloncuk pandadan "çıkıyor" gibi görünsün
 	var pivot := OFFSET + Vector2(14, 0)
@@ -68,7 +68,7 @@ func _draw() -> void:
 	draw_style_box(sb, box)
 	draw_colored_polygon(tail, Color.WHITE)
 	# yazı: kırmızı
-	draw_string(font, box.position + Vector2(PAD.x, PAD.y + FONT_SIZE * 0.82), TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, RED)
+	draw_string(font, box.position + Vector2(PAD.x, PAD.y + FONT_SIZE * 0.82), tr(TEXT), HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, RED)
 	draw_set_transform(Vector2.ZERO)
 
 # üçgeni ağırlık merkezinden dışa doğru büyüt (kontur için)

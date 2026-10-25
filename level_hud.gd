@@ -203,9 +203,13 @@ class GoalBar extends Control:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 	func _draw() -> void:
 		var ready := have >= need
-		var head := ("Ready to buy: %s!" if ready else "Next: %s") % item_name
-		draw_string_outline(UiKit.BOLD, Vector2(0, 30), head, HORIZONTAL_ALIGNMENT_CENTER, size.x, 30, 7, OUTLINE)
-		draw_string(UiKit.BOLD, Vector2(0, 30), head, HORIZONTAL_ALIGNMENT_CENTER, size.x, 30, GOLD if ready else Color.WHITE)
+		var head := (tr("Ready to buy: %s!") if ready else tr("Next: %s")) % tr(item_name)
+		var fs := 30                                     # uzun çevirilerde yazı küçülür
+		var tw := UiKit.BOLD.get_string_size(head, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		if tw > size.x - 10:
+			fs = maxi(18, int(fs * (size.x - 10) / tw))
+		draw_string_outline(UiKit.BOLD, Vector2(0, 30), head, HORIZONTAL_ALIGNMENT_CENTER, size.x, fs, 7, OUTLINE)
+		draw_string(UiKit.BOLD, Vector2(0, 30), head, HORIZONTAL_ALIGNMENT_CENTER, size.x, fs, GOLD if ready else Color.WHITE)
 		var r := Rect2(30, 46, size.x - 40, 38)
 		var bg := StyleBoxFlat.new()
 		bg.bg_color = Color(0.1, 0.15, 0.1, 0.6)
@@ -258,8 +262,8 @@ class SwapButton extends Control:
 		var b := c + Vector2(r * 0.78, -r * 0.78)
 		draw_circle(b, 19.0, Color(0.9, 0.3, 0.28) if count > 0 else Color(0.45, 0.45, 0.45))
 		draw_string(font, b + Vector2(-19, 9), str(count), HORIZONTAL_ALIGNMENT_CENTER, 38, 26, Color.WHITE)
-		draw_string_outline(font, Vector2(0, size.y - 4), "Swap", HORIZONTAL_ALIGNMENT_CENTER, size.x, 26, 6, OUTLINE)
-		draw_string(font, Vector2(0, size.y - 4), "Swap", HORIZONTAL_ALIGNMENT_CENTER, size.x, 26,
+		draw_string_outline(font, Vector2(0, size.y - 4), tr("Swap"), HORIZONTAL_ALIGNMENT_CENTER, size.x, 26, 6, OUTLINE)
+		draw_string(font, Vector2(0, size.y - 4), tr("Swap"), HORIZONTAL_ALIGNMENT_CENTER, size.x, 26,
 			Color.WHITE if active else Color(1, 1, 1, 0.7))
 
 func _ready() -> void:
@@ -603,7 +607,7 @@ func _apply_top_inset() -> void:
 
 # golden: altın bambulu yiyeceklerin sıra no'ları (Panda Yarışı; yoksa boş).
 func setup_level(level: int, foods: Array, hint: String, golden: Array = []) -> void:
-	_title.text = "LEVEL %d" % level
+	_title.text = tr("LEVEL %d") % level
 	_hint.text = hint
 	for c in _progress.get_children():
 		c.queue_free()
@@ -663,7 +667,7 @@ func show_win(level: int, rewards: Array, total: int, perfect: bool, goal: Dicti
 	_won = true
 	_clear_rewards()
 	for r in rewards:
-		_rewards.add_child(_label("%s  +%d" % [r[0], r[1]], _med, 32, Color.WHITE))
+		_rewards.add_child(_label("%s  +%d" % [tr(r[0]), r[1]], _med, 32, Color.WHITE))
 	_rewards.visible = true
 	_perfect.visible = perfect
 	_total.visible = true
@@ -683,7 +687,7 @@ func show_win(level: int, rewards: Array, total: int, perfect: bool, goal: Dicti
 	_btn_main.text = "Next"
 	_btn_main.icon = UiKit.play
 	_btn_main.icon_size = 50.0
-	_show_banner("LEVEL %d\nCOMPLETE!" % level, GOLD)
+	_show_banner(tr("LEVEL %d\nCOMPLETE!") % level, GOLD)
 	if perfect:
 		_perfect.pivot_offset = Vector2(_perfect.size.x / 2.0, _perfect.size.y / 2.0)
 		_perfect.scale = Vector2(0.3, 0.3)
@@ -706,14 +710,13 @@ func set_race_result(race: Dictionary, opened: bool) -> void:
 		return
 	var lines := []
 	if race["points"] > 0:
-		var t := "Race +%d" % race["points"]
+		var t := tr("Race +%d") % race["points"]
 		if race["mult"] > 1:
-			t += "  (%d golden x%d)" % [race["golden"], race["mult"]]
+			t += tr("  (%d golden x%d)") % [race["golden"], race["mult"]]
 		lines.append(t)
 	if race["rank"] < race["old_rank"]:
-		lines.append("Up to %s place!" % Race.ordinal(race["rank"]))
-	_race_line.text = "
-".join(lines)
+		lines.append(tr("Up to %s place!") % I18n.ordinal(race["rank"]))
+	_race_line.text = "\n".join(lines)
 	_race_line.visible = not lines.is_empty()
 
 func set_win_total(total: int, animate: bool, bamboo: int = -1) -> void:
@@ -756,14 +759,13 @@ func set_lose_offer(offer: String) -> void:
 	_lose_offer = offer
 	_btn_ad.visible = offer != ""
 	_btn_ad.text = "+1 Swap" if offer == "swap" else "Continue"
-	var sub := _tip
+	var sub := tr(_tip)
 	if offer == "continue_panda":
-		sub = "Get 1 more heart!"
+		sub = tr("Get 1 more heart!")
 	elif offer == "continue_tilt":
-		sub = "Undo your last snack!"
+		sub = tr("Undo your last snack!")
 	if offer.begins_with("continue") and _streak_risk >= GameData.WIN_STREAK_SHOW:
-		sub += "
-Keep your x%d win streak!" % _streak_risk
+		sub += tr("\nKeep your x%d win streak!") % _streak_risk
 	_banner_sub.text = sub
 	_banner_sub.visible = sub != ""
 	_btn_ad.queue_redraw()
@@ -893,7 +895,7 @@ func hide_banner() -> void:
 
 # Seviye başında ortada kısa giriş kartı; yeni yiyecek varsa simgesiyle tanıtılır.
 func show_intro(level: int, hint: String, new_kind: int, duration: float) -> void:
-	_intro_title.text = "LEVEL %d" % level
+	_intro_title.text = tr("LEVEL %d") % level
 	_intro_icon.visible = new_kind >= 0
 	if new_kind >= 0:
 		_intro_icon.kind = new_kind
