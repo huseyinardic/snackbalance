@@ -18,6 +18,12 @@ extends Node2D
 const HOVER_DROP := true
 
 const TILT_LIMIT_DEG := 33.0     # bu açıyı geçince oyun biter
+# İlk seviyelerde görünmez yardım: kirişi düz konuma çeken hafif bir yay (tork / rad).
+# Yük pivotun üstünde olduğu için kiriş kendiliğinden düzelmez; yay iki tarafa eşit koyanı
+# ödüllendirir, hep aynı tarafa koyan yine devirir. Panda Yarışı açılana dek azalarak söner.
+const BEAM_ASSIST := 300000.0
+const BEAM_ASSIST_MAX_DEG := 15.0   # yay bu eğimden sonra güçlenmez: büyük eğimde kiriş doğal davranır
+const BEAM_ASSIST_BY_LEVEL := [1.0, 1.0, 1.0, 1.0, 0.8, 0.6, 0.4, 0.2]   # 1..8. seviye; sonrası 0
 const HOLD_SECONDS := 3.0        # son yiyecekten sonra dengede tutma süresi
 const HOVER_Y := 340.0           # yiyeceğin bekleme yüksekliği (HOVER_DROP); en yüksek yığın bile ~730'u geçmiyor
 const DROP_START_SPEED := 300.0  # bırakınca ilk düşüş hızı (px/sn)
@@ -952,6 +958,7 @@ func _update_balance_tip() -> void:
 func _physics_process(delta: float) -> void:
 	if phase == Phase.WON or phase == Phase.LOST:
 		return
+	_assist_beam()
 	var f := current_food
 	if f == null or not f.freeze:
 		return
@@ -965,6 +972,13 @@ func _physics_process(delta: float) -> void:
 		_steer(delta)
 		if _sweep(f, Vector2(0, FALL_SPEED * delta)):
 			_on_touchdown(f)
+
+func _assist_beam() -> void:
+	if level > BEAM_ASSIST_BY_LEVEL.size() or beam.freeze \
+			or (phase != Phase.PLAYING and phase != Phase.HOLDING):
+		return
+	var cap := deg_to_rad(BEAM_ASSIST_MAX_DEG)
+	beam.apply_torque(-clampf(_beam_angle(), -cap, cap) * BEAM_ASSIST * BEAM_ASSIST_BY_LEVEL[level - 1])
 
 func _lane_x(screen_x: float) -> float:
 	return clampf(screen_x, pivot.position.x - MAX_LANE_OFFSET, pivot.position.x + MAX_LANE_OFFSET)
