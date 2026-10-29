@@ -1,8 +1,9 @@
 class_name PandaTip
 extends Node2D
 
-# 2. seviyede bekleyen yiyecek pandanın üstündeyken pandanın yanında çıkan uyarı
-# baloncuğu (UI katmanında, ekran koordinatları). Kuyruğu pandanın başını gösterir.
+# Pandanın yanında çıkan baloncuk (UI katmanında, ekran koordinatları). Kuyruğu pandanın
+# başını gösterir. 2. seviyede bekleyen yiyecek pandanın üstündeyken kırmızı "Not on the
+# panda!"; 1. seviyede kiriş eğikken yeşil "Balance it!" (text / color ile).
 # Konumu ve görünürlüğü main.gd her kare verir; açılınca kısa bir "pop" yapar.
 
 const TEXT := "Not on the panda!"
@@ -10,8 +11,12 @@ const FONT_SIZE := 30
 const PAD := Vector2(22, 12)
 const OFFSET := Vector2(46, -58)   # pandanın başına göre baloncuğun sol-alt köşesi
 const RED := Color(0.9, 0.24, 0.22)
+const GREEN := Color(0.2, 0.6, 0.26)
 const INK := Color(0.17, 0.14, 0.16)
 
+var text := TEXT
+var color := RED
+var flip := false   # true: baloncuk pandanın solunda (sağdaki hedefi kapatmasın)
 var _on := false
 var _t := 0.0
 
@@ -47,13 +52,18 @@ func _draw() -> void:
 	else:
 		s = 1.0 + 0.03 * sin((_t - 0.4) * 6.0)
 	var font := UiKit.BOLD
-	var tw := font.get_string_size(tr(TEXT), HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
+	var tw := font.get_string_size(tr(text), HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
 	var box := Rect2(OFFSET + Vector2(0, -FONT_SIZE - PAD.y * 2.0), Vector2(tw + PAD.x * 2.0, FONT_SIZE + PAD.y * 2.0))
 	# kuyruk köşesinden ölçeklensin: baloncuk pandadan "çıkıyor" gibi görünsün
 	var pivot := OFFSET + Vector2(14, 0)
-	draw_set_transform(pivot * (1.0 - s), 0.0, Vector2.ONE * s)
 	# taban kutunun sol-alt köşesinin içinde, uca giden yöne dik: kuyruk dolgun görünür
 	var tail := PackedVector2Array([OFFSET + Vector2(4, -28), OFFSET + Vector2(36, -2), Vector2(18, -14)])
+	if flip:                                   # pandanın soluna aynala (yazı düz kalır)
+		box.position.x = -box.end.x
+		pivot.x = -pivot.x
+		for i in tail.size():
+			tail[i].x = -tail[i].x
+	draw_set_transform(pivot * (1.0 - s), 0.0, Vector2.ONE * s)
 	# kontur
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color.WHITE
@@ -67,8 +77,7 @@ func _draw() -> void:
 	draw_colored_polygon(_grown(tail, 4.0), INK)
 	draw_style_box(sb, box)
 	draw_colored_polygon(tail, Color.WHITE)
-	# yazı: kırmızı
-	draw_string(font, box.position + Vector2(PAD.x, PAD.y + FONT_SIZE * 0.82), tr(TEXT), HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, RED)
+	draw_string(font, box.position + Vector2(PAD.x, PAD.y + FONT_SIZE * 0.82), tr(text), HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, color)
 	draw_set_transform(Vector2.ZERO)
 
 # üçgeni ağırlık merkezinden dışa doğru büyüt (kontur için)

@@ -8,7 +8,7 @@ class_name I18n
 
 const PT := {
 	# ipuçları
-	"Drag and release to drop": "Arraste e solte para largar",
+	"Drop snacks on both sides!": "Solte lanches dos dois lados!",
 	"Don't drop it on the panda!": "Não deixe cair no panda!",
 	"New: Toast": "Novo: Torrada",
 	"New: Pizza — sharp top!": "Novo: Pizza — ponta afiada!",
@@ -17,6 +17,7 @@ const PT := {
 	"New: Apple — it rolls!": "Novo: Maçã — ela rola!",
 	"Hard level!": "Fase difícil!",
 	"Not on the panda!": "No panda não!",
+	"Balance it!": "Equilibre!",
 	"Tip: Swap a hard food!": "Dica: troque uma comida difícil!",
 	# oyun ekranı
 	"Keep it balanced!": "Mantenha o equilíbrio!",
@@ -141,7 +142,7 @@ const PT := {
 
 const TR := {
 	# ipuçları
-	"Drag and release to drop": "Sürükle ve bırak",
+	"Drop snacks on both sides!": "Yiyecekleri iki tarafa koy!",
 	"Don't drop it on the panda!": "Pandanın üstüne düşürme!",
 	"New: Toast": "Yeni: Tost",
 	"New: Pizza — sharp top!": "Yeni: Pizza — ucu sivri!",
@@ -150,6 +151,7 @@ const TR := {
 	"New: Apple — it rolls!": "Yeni: Elma — yuvarlanır!",
 	"Hard level!": "Zor bölüm!",
 	"Not on the panda!": "Pandaya değil!",
+	"Balance it!": "Dengele!",
 	"Tip: Swap a hard food!": "İpucu: Zor yiyeceği değiştir!",
 	# oyun ekranı
 	"Keep it balanced!": "Dengede tut!",
@@ -275,7 +277,7 @@ const TR := {
 # İspanyolca (Latin Amerika, "tú"): bütün "es" yerellerini karşılar.
 const ES := {
 	# ipuçları
-	"Drag and release to drop": "Arrastra y suelta",
+	"Drop snacks on both sides!": "¡Suelta snacks a ambos lados!",
 	"Don't drop it on the panda!": "¡No lo sueltes sobre el panda!",
 	"New: Toast": "Nuevo: Pan tostado",
 	"New: Pizza — sharp top!": "Nuevo: Pizza — ¡punta afilada!",
@@ -284,6 +286,7 @@ const ES := {
 	"New: Apple — it rolls!": "Nuevo: Manzana — ¡rueda!",
 	"Hard level!": "¡Nivel difícil!",
 	"Not on the panda!": "¡Sobre el panda no!",
+	"Balance it!": "¡Equilíbralo!",
 	"Tip: Swap a hard food!": "Consejo: ¡cambia una comida difícil!",
 	# oyun ekranı
 	"Keep it balanced!": "¡Mantén el equilibrio!",
@@ -409,7 +412,7 @@ const ES := {
 # Endonezce ("kamu"). Eski Android'ler dili "in" diye bildirir; setup() onu "id"ye çevirir.
 const ID := {
 	# ipuçları
-	"Drag and release to drop": "Geser lalu lepas",
+	"Drop snacks on both sides!": "Jatuhkan camilan di kedua sisi!",
 	"Don't drop it on the panda!": "Jangan jatuhkan ke panda!",
 	"New: Toast": "Baru: Roti Panggang",
 	"New: Pizza — sharp top!": "Baru: Pizza — ujungnya runcing!",
@@ -418,6 +421,7 @@ const ID := {
 	"New: Apple — it rolls!": "Baru: Apel — bisa menggelinding!",
 	"Hard level!": "Level sulit!",
 	"Not on the panda!": "Jangan kena panda!",
+	"Balance it!": "Seimbangkan!",
 	"Tip: Swap a hard food!": "Tips: Tukar makanan yang sulit!",
 	# oyun ekranı
 	"Keep it balanced!": "Jaga keseimbangan!",
@@ -543,7 +547,7 @@ const ID := {
 # Almanca ("du"). Uzun kelimeler: Btn ve GoalBar yazıyı sığmazsa küçültür.
 const DE := {
 	# ipuçları
-	"Drag and release to drop": "Ziehen und loslassen",
+	"Drop snacks on both sides!": "Snacks auf beide Seiten!",
 	"Don't drop it on the panda!": "Nicht auf den Panda fallen lassen!",
 	"New: Toast": "Neu: Toast",
 	"New: Pizza — sharp top!": "Neu: Pizza — spitze Ecke!",
@@ -552,6 +556,7 @@ const DE := {
 	"New: Apple — it rolls!": "Neu: Apfel — er rollt!",
 	"Hard level!": "Schweres Level!",
 	"Not on the panda!": "Nicht auf den Panda!",
+	"Balance it!": "Ausbalancieren!",
 	"Tip: Swap a hard food!": "Tipp: Tausche schwieriges Essen!",
 	# oyun ekranı
 	"Keep it balanced!": "Halte das Gleichgewicht!",

@@ -4,7 +4,7 @@ extends Node2D
 # İlk seviyede "sürükle ve bırak"ı gösteren el (UI katmanında, ekran koordinatları).
 # Parmak yiyeceğin altından başlar, yana kayar; yiyeceğin soluk bir kopyası onu
 # izler, parmak kalkınca kopya aşağı düşüp kaybolur. Oyuncu ekrana dokununca
-# main.gd stop() der; ilk yiyecek kirişe konunca bir daha gösterilmez.
+# main.gd stop() der. 1. seviye ilk kez kazanılana dek her yiyecekte, dengeleyecek tarafı gösterir.
 
 const CYCLE := 2.6          # bir gösterimin süresi (sn), sonra tekrar
 const FINGER_BELOW := 95.0  # parmak yiyeceğin bu kadar altında (yiyeceği kapatmasın)

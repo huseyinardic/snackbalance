@@ -36,6 +36,15 @@ const DEV_LONG_PRESS_MS := 600   # test sürümü: seviye başlığına uzun bas
 const SWAP_UNLOCK_LEVEL := 5     # Swap yardımcısı bu seviyeden itibaren (önce temel mekanik öğrenilsin)
 const TUTORIAL_OFFSET := 150.0   # tutorial elinin gösterdiği bırakma yeri (pivot'un solu)
 const TUTORIAL_DELAY := 0.6      # yiyecek bu kadar dokunulmadan bekleyince el çıkar
+const COACH_TOLERANCE := 30.0    # 1. seviye hedefi: yiyecek hedefe bu kadar yakınsa halka yeşil
+const COACH_BALANCED := 20.0     # hesaplanan yer pivota bu kadar yakınsa denge var sayılır (sıradaki sola)
+const COACH_TILT_GAIN := 6.0     # hedef: kirişin her 1° eğimi için bu kadar px karşı tarafa
+const COACH_SPIN_GAIN := 60.0    # hedef: kirişin dönme hızına (rad/sn) karşı düzeltme
+const COACH_PANDA_CLEAR := 110.0 # hedef pandaya bu kadar yakın olmaz (biraz şaşan bile pandaya değmesin)
+const COACH_MAX_OFFSET := 200.0  # hedef kiriş ucuna bu kadar yaklaşabilir
+const COACH_SMOOTH := 6.0        # halkanın yeni hedefe kayma hızı
+const COACH_TIP_DEG := 4.0       # 1. seviye: kiriş bu kadar eğilince panda "Balance it!" der
+const COACH_TIP_OFF_DEG := 2.0   # ... bu açının altına düzelince susar
 const PANDA_TIP_LEVEL := 2       # "Not on the panda!" uyarısının öğretildiği seviye
 const CONTINUE_MIN_LEVEL := 3    # kaybedince "Continue" reklam teklifi bu seviyeden itibaren
 const REVIEW_MIN_LEVEL := 8      # değerlendirme penceresi en erken bu seviyenin kazanılmasında
@@ -104,6 +113,11 @@ var _race_pop := {}              # "Next"e basınca açılacak yarış kartı (l
 var _snap := {}                  # son yiyecek bırakılmadan hemen önceki alan (devrilince geri sarmak için)
 var _review: ReviewPrompt
 var _beam_held := false          # Continue sonrası kiriş, sıradaki yiyecek değene kadar sabit
+var _drop_target: DropTarget
+var _coach_x := 0.0              # 1. seviye hedef halkasının (yumuşatılmış) dünya x'i
+var _coach_food_id := 0          # halkanın ait olduğu yiyecek (yenisinde halka atlar)
+var _balance_tip: PandaTip       # 1. seviye: kiriş eğikken pandanın "Balance it!" baloncuğu
+var _balance_tip_on := false
 
 # Bekleyen yiyeceğin nereye ineceğini gösteren kesikli çizgi; pandaya
 # denk geliyorsa kırmızı olur.
@@ -137,16 +151,53 @@ class DropGuide extends Node2D:
 		draw_dashed_line(from, to, col, 3.0, 12.0)
 		draw_line(to + Vector2(-16, 0), to + Vector2(16, 0), col, 3.0)
 
+# 1. seviye koçu: kirişi dengeleyecek bırakma yerinde nabız gibi atan halka ve
+# üstünde aşağıyı gösteren oklar. Yiyecek hedefin üstüne gelince yeşile döner.
+class DropTarget extends Node2D:
+	var active := false
+	var at := Vector2.ZERO   # hedefte bırakılan yiyeceğin ineceği nokta (alt kenarı)
+	var good := false
+	var _t := 0.0
+
+	func _process(delta: float) -> void:
+		if active:
+			_t += delta
+			queue_redraw()
+
+	func _draw() -> void:
+		if not active:
+			return
+		var ink := Color(0.17, 0.14, 0.16, 0.55)
+		var col := Color(0.35, 0.82, 0.35) if good else Color(1.0, 0.98, 0.92)
+		var pulse := 0.5 + 0.5 * sin(_t * 6.0)
+		var r := 36.0 + 5.0 * pulse
+		draw_set_transform(at, 0.0, Vector2(1.0, 0.38))   # kirişin üstünde yassı halka
+		draw_arc(Vector2.ZERO, r, 0.0, TAU, 40, ink, 10.0, true)
+		draw_arc(Vector2.ZERO, r, 0.0, TAU, 40, col, 5.5, true)
+		draw_set_transform(Vector2.ZERO)
+		for i in 2:
+			var c := Vector2(at.x, at.y - 40.0 - 9.0 * pulse - i * 22.0)
+			var v := PackedVector2Array([c + Vector2(-15, -9), c + Vector2(0, 5), c + Vector2(15, -9)])
+			draw_polyline(v, ink, 10.0, true)
+			draw_polyline(v, col, 5.5, true)
+
 func _ready() -> void:
 	_guide = DropGuide.new()
 	add_child(_guide)
 	move_child(_guide, food_container.get_index())   # yiyeceklerin altında çizilsin
+	_drop_target = DropTarget.new()
+	add_child(_drop_target)
+	move_child(_drop_target, food_container.get_index())
 	hud = LevelHud.new()
 	$UI.add_child(hud)
 	_tutorial = TutorialHand.new()
 	$UI.add_child(_tutorial)
 	_panda_tip = PandaTip.new()
 	$UI.add_child(_panda_tip)
+	_balance_tip = PandaTip.new()
+	_balance_tip.text = "Balance it!"
+	_balance_tip.color = PandaTip.GREEN
+	$UI.add_child(_balance_tip)
 	_review = ReviewPrompt.new()
 	add_child(_review)
 	hud.next_pressed.connect(_on_next)
@@ -382,6 +433,7 @@ func _process(delta: float) -> void:
 	_update_food(delta)
 	_update_tutorial(delta)
 	_update_panda_tip()
+	_update_balance_tip()
 	if phase == Phase.LOST:   # iniş pandaya ikinci vuruş olduysa
 		return
 	_mark_lost_foods()
@@ -789,7 +841,7 @@ func _tap_ui(pos: Vector2) -> bool:
 # --- yiyecek hareketi ---
 
 # Bekleyen yiyecek parmağı izler (kare hızında, akıcı olsun diye _process'te).
-func _update_food(_delta: float) -> void:
+func _update_food(delta: float) -> void:
 	var f := current_food
 	if f == null or not f.freeze or not HOVER_DROP or _dropping:
 		_set_guide(false)
@@ -797,19 +849,66 @@ func _update_food(_delta: float) -> void:
 	if _holding:
 		f.position.x = _lane_x(_touch_x)
 	_update_guide(f)
+	_update_drop_target(f, delta)
 
-# İlk seviyede, oyuncu henüz bir yiyeceği kirişe koymadıysa: bekleyen yiyecek
-# dururken el sürükle-bırakı gösterir (pandanın soluna, boş kirişe). Dokununca kaybolur.
+# 1. seviye hiç kazanılmadıysa koçluk açık: her yiyecekte hedef halkası, beklerken el.
+# İlk ölçümde oyuncuların ~%44'ü 1. seviyeyi geçemedi; el yalnız ilk yiyecekte çıkıyordu,
+# ikincisini çoğu aynı tarafa bırakıp kirişi deviriyordu.
+func _coaching() -> bool:
+	return level == 1 and GameData.best_level <= 1
+
+# Kirişi dengeleyen bırakma yeri (dünya x). Yük pivotun üstünde: kiriş ters sarkaç gibi,
+# torku eşitlemek yetmez, yatıklık kendiliğinden düzelmez. Bu yüzden torkun tersine ek
+# olarak eğime ve dönme hızına karşı da düzeltir (sağa yatıksa biraz daha sola).
+# Pandanın üstüne düşmesin diye ondan uzak tutulur; boş kirişte pandanın solu.
+func _balance_x(f: Food) -> float:
+	var sum := 0.0
+	for c in food_container.get_children():
+		if c is Food and c != f and c.get_meta("landed", false) \
+				and not c.get_meta("gone", false) and not c.get_meta("lost", false):
+			sum += c.mass * beam.to_local(c.global_position).x
+	var x := -sum / f.mass - rad_to_deg(_beam_angle()) * COACH_TILT_GAIN - beam.angular_velocity * COACH_SPIN_GAIN
+	if absf(x) < COACH_BALANCED:
+		x = -TUTORIAL_OFFSET
+	var min_off := maxf(COACH_PANDA_CLEAR, PANDA_HIT_HALF_WIDTH + f.half_w * 0.5 + 10.0)
+	if absf(x) < min_off:
+		x = min_off * signf(x)
+	return pivot.position.x + clampf(x, -COACH_MAX_OFFSET, COACH_MAX_OFFSET)
+
+func _update_drop_target(f: Food, delta: float) -> void:
+	if not _coaching() or phase != Phase.PLAYING:
+		_hide_drop_target()
+		return
+	# halka kirişle birlikte yumuşakça kayar (dönme hızı terimi titretmesin); yeni yiyecekte atlar
+	var want := _balance_x(f)
+	_coach_x = want if f.get_instance_id() != _coach_food_id else lerpf(_coach_x, want, 1.0 - exp(-COACH_SMOOTH * delta))
+	_coach_food_id = f.get_instance_id()
+	var xf := f.global_transform
+	xf.origin.x = _coach_x
+	var motion := Vector2(0, 1400)
+	var res := get_world_2d().direct_space_state.cast_motion(_shape_query(f, xf, motion))
+	var safe: float = res[0] if res.size() > 0 else 1.0
+	_drop_target.active = true
+	_drop_target.at = xf.translated(motion * safe).origin + Vector2(0, f.half_h)
+	_drop_target.good = absf(f.global_position.x - xf.origin.x) < COACH_TOLERANCE
+
+func _hide_drop_target() -> void:
+	if _drop_target.active:
+		_drop_target.active = false
+		_drop_target.queue_redraw()
+
+# 1. seviyede (koçluk açıkken) bekleyen yiyecek dururken el sürükle-bırakı gösterir:
+# kirişi dengeleyecek tarafa (hedef halkasına). Dokununca kaybolur.
 func _update_tutorial(delta: float) -> void:
 	var f := current_food
-	var show := not GameData.tutorial_done and level == 1 and phase == Phase.PLAYING \
+	var show := _coaching() and phase == Phase.PLAYING \
 		and f != null and f.freeze and not _dropping and not _holding
 	# giriş kartı silinsin; oyuncu kendisi denemek isterse önce o dokunsun
 	_tutorial_idle = _tutorial_idle + delta if show else 0.0
 	if _tutorial_idle < TUTORIAL_DELAY:
 		_tutorial.stop()
 		return
-	var to := Vector2(pivot.position.x - TUTORIAL_OFFSET, f.global_position.y)
+	var to := Vector2(_coach_x, f.global_position.y)
 	var xf := get_canvas_transform()
 	_tutorial.play(xf * f.global_position, xf * to, f.kind, xf.get_scale().x)
 	if not _tutorial_logged:
@@ -832,6 +931,19 @@ func _update_panda_tip() -> void:
 	if not _panda_tip_logged:
 		_panda_tip_logged = true
 		Analytics.log_event("panda_tip_shown")
+
+# 1. seviyede (koçluk açıkken) kiriş eğikken ve sıradaki yiyecek beklerken panda
+# "Balance it!" der; kiriş düzelince susar (titremesin diye iki eşikli).
+func _update_balance_tip() -> void:
+	var f := current_food
+	var deg := absf(rad_to_deg(_beam_angle()))
+	var waiting := _coaching() and phase == Phase.PLAYING and f != null and f.freeze and not _dropping
+	_balance_tip_on = waiting and deg >= (COACH_TIP_OFF_DEG if _balance_tip_on else COACH_TIP_DEG)
+	if not _balance_tip_on:
+		_balance_tip.hide_tip()
+		return
+	_balance_tip.flip = _coach_x > pivot.position.x   # baloncuk hedefin karşı tarafında
+	_balance_tip.show_at(panda.get_global_transform_with_canvas() * Vector2(0, -68))
 
 # Düşüş fizik adımlarında: kiriş ve düşen yiyecek aynı adımlarla ilerlesin.
 # _process'teyken yavaş karelerde (takılma, zayıf telefon) bir karede birkaç
@@ -861,6 +973,10 @@ func _set_guide(on: bool) -> void:
 	if _guide.active != on:
 		_guide.active = on
 		_guide.queue_redraw()
+	if not on:
+		_hide_drop_target()
+		_balance_tip_on = false
+		_balance_tip.hide_tip()
 
 func _update_guide(f: Food) -> void:
 	var space := get_world_2d().direct_space_state

@@ -13,7 +13,7 @@ const W := Food.Kind.WATERMELON
 const A := Food.Kind.APPLE
 
 const HAND_MADE := [
-	{"foods": [S, S, S, S], "hint": "Drag and release to drop"},
+	{"foods": [S, S, S, S], "hint": "Drop snacks on both sides!"},
 	{"foods": [S, C, S, C], "hint": "Don't drop it on the panda!"},
 	{"foods": [S, C, T, S, C], "hint": "New: Toast"},
 	{"foods": [S, C, P, S, C], "hint": "New: Pizza — sharp top!"},
