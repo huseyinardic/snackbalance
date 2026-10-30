@@ -381,19 +381,30 @@ func _set_camera(menu_view: bool, instant: bool) -> void:
 	_cam_tween.chain()
 
 # Android geri tuşu: panel -> kapat, oyun -> duraklat, duraklatılmış -> devam,
-# kart -> menü, menü -> çık.
+# kart -> menü, menü -> arka plana.
 func _notification(what: int) -> void:
 	if what != NOTIFICATION_WM_GO_BACK_REQUEST:
 		return
 	if phase == Phase.MENU:
 		if not menu.back():
-			get_tree().quit()
+			_to_background()
 	elif get_tree().paused:
 		_resume()
 	elif phase == Phase.PLAYING or phase == Phase.HOLDING:
 		_pause()
 	elif not Ads.busy():
 		_go_home()
+
+# Menüde geri tuşu oyunu kapatmaz, arka plana gönderir (Android'in ana ekran tuşu gibi):
+# quit() ile kapanırken Godot'un çizim iş parçacığı yok edilmiş bir kilide dokunup
+# çöküyordu (Play'de recursive_mutex::lock SIGABRT). Dönüşte oyun olduğu yerden açılır.
+func _to_background() -> void:
+	if not Engine.has_singleton("AndroidRuntime"):
+		get_tree().quit()
+		return
+	var runtime = Engine.get_singleton("AndroidRuntime")
+	var activity = runtime.getActivity()
+	activity.runOnUiThread(runtime.createRunnableFromGodotCallable(func(): activity.moveTaskToBack(true)))
 
 func _target() -> int:
 	return _level_data["foods"].size()
