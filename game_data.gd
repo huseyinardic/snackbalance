@@ -41,6 +41,9 @@ var win_streak := 0              # art arda kazanılan seviye (günlük giriş s
 var race_id := 0                 # Panda Yarışı (race.gd): kaçıncı yarış, başlangıcı, puanı
 var race_start := 0              # unix sn; 0 = henüz yarış yok
 var race_points := 0
+var race_streak := 0             # yarış başladıktan sonra art arda kazanılan seviye: yarış çarpanı bundan
+                                 # (genel seriden değil: 1-4'ü art arda geçen yeni oyuncu yarışa x8 giriyordu)
+var _race_streak_lost := 0       # kayıpta sıfırlanan yarış serisi (Continue geri yazar)
 var race_seen := false           # yarış paneli (tanıtım) bir kez açıldı mı
 var last_day := ""               # en son oynanan gün (seri)
 var claimed_day := ""            # günlük ödülün en son alındığı gün
@@ -74,6 +77,7 @@ func load_data() -> void:
 	race_id = int(cfg.get_value("race", "id", 0))
 	race_start = int(cfg.get_value("race", "start", 0))
 	race_points = maxi(0, int(cfg.get_value("race", "points", 0)))
+	race_streak = maxi(0, int(cfg.get_value("race", "streak", 0)))
 	race_seen = cfg.get_value("race", "seen", false)
 	bamboo = maxi(0, int(cfg.get_value("economy", "bamboo", 0)))
 	owned = cfg.get_value("economy", "owned", [])
@@ -102,6 +106,7 @@ func save() -> void:
 	cfg.set_value("race", "id", race_id)
 	cfg.set_value("race", "start", race_start)
 	cfg.set_value("race", "points", race_points)
+	cfg.set_value("race", "streak", race_streak)
 	cfg.set_value("race", "seen", race_seen)
 	cfg.set_value("economy", "bamboo", bamboo)
 	cfg.set_value("economy", "owned", owned)
@@ -146,19 +151,23 @@ static func win_streak_bonus(n: int) -> int:
 
 func add_win() -> void:
 	win_streak += 1
+	race_streak += 1
 	save()
 
 # Kaybedince seri hemen sıfırlanır (kart açıkken uygulama kapatılsa da kaybolur);
 # Continue dönen değeri restore_win_streak ile geri yazar.
 func break_win_streak() -> int:
 	var lost := win_streak
-	if lost > 0:
+	_race_streak_lost = race_streak
+	if lost > 0 or race_streak > 0:
 		win_streak = 0
+		race_streak = 0
 		save()
 	return lost
 
 func restore_win_streak(n: int) -> void:
 	win_streak = maxi(win_streak, n)
+	race_streak = maxi(race_streak, _race_streak_lost)
 	save()
 
 # --- Panda Yarışı ---
@@ -167,6 +176,7 @@ func start_race(at: int) -> void:
 	race_id += 1
 	race_start = at
 	race_points = 0
+	race_streak = 0
 	save()
 
 func add_race_points(n: int) -> void:

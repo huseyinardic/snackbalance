@@ -529,7 +529,7 @@ func _win() -> void:
 		for f in food_container.get_children():
 			if f is Food and f.golden and f.get_meta("landed", false) and not f.get_meta("gone", false) and not f.get_meta("lost", false):
 				golden += 1
-		var mult := Race.multiplier(GameData.win_streak)
+		var mult := Race.multiplier(GameData.race_streak)
 		var before := Race.standings()
 		race = {"golden": golden, "mult": mult, "points": golden * mult, "old_rank": Race.rank()}
 		if race["points"] > 0:

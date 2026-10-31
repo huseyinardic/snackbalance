@@ -13,7 +13,9 @@ const UNLOCK_LEVEL := 5            # 4. seviye kazanılınca açılır (GameData
                                    # gel" sebebi olsun
 const DURATION := 3 * 24 * 3600
 const TOP_SCORE := 150.0           # en iyi rakibin yarış sonu hedefi (dengeleme ayarı)
-const MULT := [1, 1, 2, 4, 8]      # indeks = bu galibiyetle ulaşılan seri; 4+ = x8
+# indeks = bu galibiyetle ulaşılan yarış serisi; 6+ = x8. Yavaş basamaklar: yarış 4. seviyeden
+# sonra açılıyor ve kolay seviyelerde seri kolay — [1,1,2,4,8] ile tek oturumda zirveye çıkılıyordu
+const MULT := [1, 1, 2, 2, 4, 4, 8]
 const PRIZES := [300, 150, 75]     # 1-3. bambu (1. ayrıca Gold Medal; varsa +PRIZES[0] daha)
 const PRIZE_TOP10 := 25
 const MEDAL := "medal"
@@ -82,7 +84,9 @@ static func golden_seqs(level: int, count: int) -> Array:
 # --- rakipler ---
 
 # i. rakibin bu yarıştaki puanı (t: 0..1 yarışın geçen kısmı). Her yarışta kimin önde
-# olacağı değişir; kimi hızlı başlar, kimi sona doğru atak yapar; puan dakikalar içinde artar.
+# olacağı değişir; puan dakikalar içinde artar. Önden yüklü: rakipler ilk saatlerde hızlı
+# (yeni oyuncu ilk oturumda zirveye çıkmasın), sonra yavaşlar (her gün gelen oyuncu tırmansın);
+# yarış sonu puanları aynı.
 static func rival_score(race_id: int, i: int, t: float) -> int:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = race_id * 7349 + 17
@@ -96,7 +100,7 @@ static func rival_score(race_id: int, i: int, t: float) -> int:
 	rng.seed = race_id * 7349 + 101 * (i + 1)
 	var shape := 1.0 - float(strength) / (RIVALS.size() - 1)
 	var target := TOP_SCORE * (0.05 + 0.95 * pow(shape, 1.5)) * rng.randf_range(0.88, 1.1)
-	var curve: float = [0.6, 1.0, 1.6][rng.randi() % 3]
+	var curve: float = [0.45, 0.6, 0.8][rng.randi() % 3]
 	# çoğu yarışa birkaç puanla girer (oyuncudan önce başlamış gibi): zayıflar 1-3,
 	# güçlüler ~10; yaklaşık altıda biri 0'dan. İlk puanını alan oyuncu boş değil,
 	# kıpırdayan bir yarış görür.
@@ -105,8 +109,8 @@ static func rival_score(race_id: int, i: int, t: float) -> int:
 		head = rng.randf_range(1.0, 3.0) + 8.0 * shape * rng.randf_range(0.6, 1.0)
 	var ticks := 864.0                                 # 3 günde ~5 dakikada bir adım
 	var tq := clampf(floorf(t * ticks + rng.randf()) / ticks, 0.0, 1.0)
-	var burst := 0.12 * minf(tq / 0.03, 1.0)           # ilk ~2 saat hızlı başlangıç
-	var f := burst + 0.88 * pow(tq, curve)
+	var burst := 0.25 * minf(tq / 0.04, 1.0)           # ilk ~3 saat: hedefin %25'i
+	var f := burst + 0.75 * pow(tq, curve)
 	return roundi(head + (maxf(target, head) - head) * f)
 
 # Sıralama: [{name, score, color, you}], puana göre azalan; eşitlikte rakip önde
