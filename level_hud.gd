@@ -684,6 +684,8 @@ func show_win(level: int, rewards: Array, total: int, perfect: bool, goal: Dicti
 	_banner_sub.visible = false
 	_btn_ad.visible = offer_double
 	_btn_ad.text = "x2 Bamboo"
+	_btn_ad.color = UiKit.ORANGE
+	_btn_ad.icon = UiKit.ad
 	_btn_main.text = "Next"
 	_btn_main.icon = UiKit.play
 	_btn_main.icon_size = 50.0
@@ -732,7 +734,7 @@ func set_win_total(total: int, animate: bool, bamboo: int = -1) -> void:
 func set_ad_visible(on: bool) -> void:
 	_btn_ad.visible = on
 
-# offer: "" | "swap" | "continue_panda" | "continue_tilt" (main.gd _lose_offer)
+# offer: "" | "swap" | "continue_panda" | "continue_tilt" (+ "_free": reklamsız) (main.gd _lose_offer)
 # streak_lost: bu kayıpla sıfırlanan galibiyet serisi (Continue teklifi varsa "koru" yazar).
 func show_lose(reason: String, offer: String = "", tip: String = "", streak_lost: int = 0) -> void:
 	hide_hold()
@@ -759,10 +761,14 @@ func set_lose_offer(offer: String) -> void:
 	_lose_offer = offer
 	_btn_ad.visible = offer != ""
 	_btn_ad.text = "+1 Swap" if offer == "swap" else "Continue"
+	# reklamsız Continue yeşil ve oynat simgeli: reklam düğmesiyle karışmasın
+	var free := offer.ends_with("_free")
+	_btn_ad.color = UiKit.GREEN if free else UiKit.ORANGE
+	_btn_ad.icon = UiKit.play if free else UiKit.ad
 	var sub := tr(_tip)
-	if offer == "continue_panda":
+	if offer.begins_with("continue_panda"):
 		sub = tr("Get 1 more heart!")
-	elif offer == "continue_tilt":
+	elif offer.begins_with("continue_tilt"):
 		sub = tr("Undo your last snack!")
 	if offer.begins_with("continue") and _streak_risk >= GameData.WIN_STREAK_SHOW:
 		sub += tr("\nKeep your x%d win streak!") % _streak_risk

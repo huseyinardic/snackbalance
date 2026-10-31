@@ -53,6 +53,8 @@ const COACH_TIP_DEG := 4.0       # 1. seviye: kiriş bu kadar eğilince panda "B
 const COACH_TIP_OFF_DEG := 2.0   # ... bu açının altına düzelince susar
 const PANDA_TIP_LEVEL := 2       # "Not on the panda!" uyarısının öğretildiği seviye
 const CONTINUE_MIN_LEVEL := 3    # kaybedince "Continue" reklam teklifi bu seviyeden itibaren
+const FREE_CONTINUE_MAX_LEVEL := 8   # bu seviyeye dek Continue reklamsız (deneme başına 1): oyuncuların
+									 # çoğu ilk seviyelerde bir kayıptan hemen sonra bırakıyordu
 const REVIEW_MIN_LEVEL := 8      # değerlendirme penceresi en erken bu seviyenin kazanılmasında
 const CONTINUE_MAX_DEG := 18.0   # geri sarınca kiriş en çok bu eğimde, oyuncu yiyeceği koyana dek sabit
 const MENU_ZOOM := 2.0           # menüde kamera pandaya bu kadar yaklaşır
@@ -716,28 +718,33 @@ func _on_next() -> void:
 func _offer_swap_ad() -> bool:
 	return level >= SWAP_UNLOCK_LEVEL and GameData.swaps == 0 and Ads.rewarded_ready()
 
-# Kaybetme kartındaki tek reklam teklifi. Önce "Continue" (deneme başına bir kez):
-# pandaya 2. vuruşta +1 can, devrilmede son yiyeceği geri al. Yoksa Swap'ı bitmiş
-# oyuncuya "+1 Swap".
+# Kaybetme kartındaki tek teklif. Önce "Continue" (deneme başına bir kez): pandaya
+# 2. vuruşta +1 can, devrilmede son yiyeceği geri al — ilk seviyelerde reklamsız ("_free"),
+# sonra ödüllü reklamla. Yoksa Swap'ı bitmiş oyuncuya "+1 Swap".
 func _lose_offer() -> String:
-	if level >= CONTINUE_MIN_LEVEL and not _continue_used and Ads.rewarded_ready():
-		if _lose_cause == "panda" and not _snap.is_empty():
-			return "continue_panda"
-		if _lose_cause == "tilt" and not _snap.is_empty():
-			return "continue_tilt"
+	if not _continue_used and not _snap.is_empty() and _lose_cause in ["panda", "tilt"]:
+		if level <= FREE_CONTINUE_MAX_LEVEL:
+			return "continue_%s_free" % _lose_cause
+		if level >= CONTINUE_MIN_LEVEL and Ads.rewarded_ready():
+			return "continue_" + _lose_cause
 	return "swap" if _offer_swap_ad() else ""
 
 func _on_continue() -> void:
 	if phase != Phase.LOST or _continue_used or Ads.busy():
 		return
+	if level <= FREE_CONTINUE_MAX_LEVEL:
+		_continue_level(true)
+		return
 	Ads.show_rewarded(func(earned: bool):
 		if earned and phase == Phase.LOST and not _continue_used:
-			_continue_level())
+			_continue_level(false))
 
-func _continue_level() -> void:
+func _continue_level(free: bool) -> void:
 	_continue_used = true
-	Analytics.log_event("ad_reward", {"placement": "continue_" + _lose_cause, "level": level})
-	Analytics.log_event("level_continue", {"level": level, "cause": _lose_cause, "win_streak": _streak_lost})
+	if not free:
+		Analytics.log_event("ad_reward", {"placement": "continue_" + _lose_cause, "level": level})
+	Analytics.log_event("level_continue", {"level": level, "cause": _lose_cause, "win_streak": _streak_lost,
+		"free": 1 if free else 0})
 	if _streak_lost > 0:
 		GameData.restore_win_streak(_streak_lost)
 		hud.set_win_streak(GameData.win_streak, false)
