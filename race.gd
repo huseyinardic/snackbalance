@@ -8,7 +8,9 @@ class_name Race
 # Puanları kayıt gerektirmez: yarış no + geçen süreden her seferinde aynı hesaplanır.
 
 const ENABLED := true              # kapatma anahtarı: false = yarış tamamen gizli
-const UNLOCK_LEVEL := 9            # 8. seviye kazanılınca açılır (GameData.best_level)
+const UNLOCK_LEVEL := 5            # 4. seviye kazanılınca açılır (GameData.best_level). 8'deydi: oyuncuların
+                                   # çoğu oraya gelmeden bırakıyordu; yarış ilk oturumda başlasın, "yarın
+                                   # gel" sebebi olsun
 const DURATION := 3 * 24 * 3600
 const TOP_SCORE := 150.0           # en iyi rakibin yarış sonu hedefi (dengeleme ayarı)
 const MULT := [1, 1, 2, 4, 8]      # indeks = bu galibiyetle ulaşılan seri; 4+ = x8
@@ -55,7 +57,7 @@ static func progress() -> float:
 static func multiplier(streak: int) -> int:
 	return MULT[clampi(streak, 0, MULT.size() - 1)]
 
-# Yarış açıldıysa ve henüz başlamadıysa ilkini başlatır (8. seviyeyi yeni geçen ya da
+# Yarış açıldıysa ve henüz başlamadıysa ilkini başlatır (4. seviyeyi yeni geçen ya da
 # güncellemeyle gelen ileri seviyedeki oyuncu). true = şimdi başladı.
 static func ensure_started() -> bool:
 	if not unlocked() or GameData.race_start > 0:

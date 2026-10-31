@@ -538,7 +538,7 @@ func _win() -> void:
 		if race["rank"] < race["old_rank"]:
 			_race_pop = _rank_up_pop(before, Race.standings(), race)
 	elif Race.ensure_started():
-		race_opened = true   # 8. seviye: yarış şimdi açıldı
+		race_opened = true   # 4. seviye: yarış şimdi açıldı
 		var rows := Race.standings()
 		_race_pop = {"title": "Panda Race!", "sub": "Beat the animals in 3 days!",
 			"msg": "Win levels with golden bamboo.\nWin streaks multiply it!", "button": "Let's go!",
