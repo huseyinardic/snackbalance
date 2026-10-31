@@ -103,6 +103,7 @@ func _initialize() -> void:
 		return
 	_initialized = true
 	_apply_analytics_consent()
+	Analytics.consent_done()
 	consent_ready.emit()
 	var on_init := OnInitializationCompleteListener.new()
 	on_init.on_initialization_complete = func(_s): _ready_sdk = true

@@ -13,6 +13,8 @@ const MAX_QUEUE := 20
 var _core: Object = null
 var _fa: Object = null
 var _ready_to_log := false
+var _initialized := false
+var _consent_done := false     # ads.gd onay akışını bitirdi (toplama açıldı ya da kapandı)
 var _queue: Array = []   # analytics hazır olmadan gelen olaylar
 
 func _ready() -> void:
@@ -23,16 +25,33 @@ func _ready() -> void:
 		_core = Engine.get_singleton("GodotxFirebaseCore")
 		_core.core_initialized.connect(_on_core_initialized)
 		_core.initialize()
+		# güvenlik ağı: onay akışı hiç bitmezse olaylar sonsuza dek kuyrukta kalmasın
+		# (eskisi gibi, önceki açılışın kalıcı toplama tercihiyle gönderilir)
+		get_tree().create_timer(20.0).timeout.connect(consent_done)
 
 func _on_core_initialized(success: bool) -> void:
 	if success and _fa:
 		_fa.initialize()
 
 func _on_analytics_initialized(success: bool) -> void:
-	_ready_to_log = success
-	if success:
-		for e in _queue:
-			_fa.log_event(e[0], e[1])
+	_initialized = success
+	if not success:
+		_queue.clear()
+	_flush()
+
+# Onay akışı bitti (ads.gd): kuyruk ancak şimdi gönderilir. İlk açılışta toplama kapalı
+# başlar; kuyruk onaydan önce gönderilince olaylar düşüyordu (yeni oyuncunun 1. seviyedeki
+# level_start'ı BigQuery'de eksikti).
+func consent_done() -> void:
+	_consent_done = true
+	_flush()
+
+func _flush() -> void:
+	if not (_initialized and _consent_done):
+		return
+	_ready_to_log = true
+	for e in _queue:
+		_fa.log_event(e[0], e[1])
 	_queue.clear()
 
 func set_consent(granted: bool) -> void:
