@@ -56,6 +56,10 @@ const CONTINUE_MIN_LEVEL := 3    # kaybedince "Continue" reklam teklifi bu seviy
 const FREE_CONTINUE_MAX_LEVEL := 8   # bu seviyeye dek Continue reklamsız (deneme başına 1): oyuncuların
 									 # çoğu ilk seviyelerde bir kayıptan hemen sonra bırakıyordu
 const REVIEW_MIN_LEVEL := 8      # değerlendirme penceresi en erken bu seviyenin kazanılmasında
+const GOAL_LEVEL := 5            # ilk kez kazanılınca "level_5_complete": Google Ads'in hedefi (kurulum
+                                 # yerine oyunu anlayıp oynayan oyuncu; olay adıyla aktarılır)
+const REMIND_ASK_LEVEL := 3      # bu seviye kazanılınca "Next"ten önce bildirim izni sorulur (hediye
+                                 # paneline yeni oyuncu pek uğramıyordu: izin sorulan %5'ti)
 const CONTINUE_MAX_DEG := 18.0   # geri sarınca kiriş en çok bu eğimde, oyuncu yiyeceği koyana dek sabit
 const MENU_ZOOM := 2.0           # menüde kamera pandaya bu kadar yaklaşır
 const CAMERA_SECONDS := 0.6      # menü <-> oyun kamera geçişi
@@ -120,6 +124,8 @@ var _golden := {}                # Panda Yarışı: altın bambulu yiyeceklerin 
 var _race_pop := {}              # "Next"e basınca açılacak yarış kartı (level_hud.show_race); {} = yok
 var _snap := {}                  # son yiyecek bırakılmadan hemen önceki alan (devrilince geri sarmak için)
 var _review: ReviewPrompt
+var _reminders: Reminders
+var _remind_asked := false       # oturumda bir kez
 var _beam_held := false          # Continue sonrası kiriş, sıradaki yiyecek değene kadar sabit
 var _drop_target: DropTarget
 var _coach_x := 0.0              # 1. seviye hedef halkasının (yumuşatılmış) dünya x'i
@@ -223,9 +229,10 @@ func _ready() -> void:
 	hud.resume_pressed.connect(_resume)
 	menu = MenuUi.new()
 	$UI.add_child(menu)
-	var reminders := Reminders.new()   # günlük hediye / Panda Yarışı hatırlatması (yerel bildirim)
-	add_child(reminders)
-	menu.reminders = reminders
+	_reminders = Reminders.new()   # günlük hediye / Panda Yarışı hatırlatması (yerel bildirim)
+	add_child(_reminders)
+	menu.reminders = _reminders
+	hud.reminder_answer.connect(_on_reminder_answer)
 	menu.play_pressed.connect(_on_play)
 	menu.outfit_preview.connect(func(o: Dictionary): panda.set_outfit(o))
 	menu.theme_picked.connect(func(t: String): backdrop.set_mood(t))
@@ -504,6 +511,7 @@ func _win() -> void:
 	_swap_hint = false
 	_set_guide(false)
 	var had_sunset := GameData.sunset_unlocked()
+	var first_clear := level == GameData.best_level     # bu seviye ilk kez geçiliyor
 	GameData.set_level(level + 1)
 	GameData.add_win()
 	var rewards := GameData.level_rewards(Levels.is_peak(level), panda_hits, _drops)
@@ -551,6 +559,8 @@ func _win() -> void:
 		"win_streak": GameData.win_streak,
 		"race_points": race.get("points", 0),
 	})
+	if first_clear and level == GOAL_LEVEL:
+		Analytics.log_event("level_5_complete")
 	beam_visual.modulate = Color.WHITE
 	hud.show_win(level, rewards, _reward, panda_hits == 0 and _drops == 0, Accessories.next_goal(GameData.owned),
 		GameData.bamboo, GameData.sunset_unlocked() and not had_sunset, Ads.rewarded_ready())
@@ -560,6 +570,11 @@ func _win() -> void:
 	GameData.vibrate(60)
 	if level >= REVIEW_MIN_LEVEL and panda_hits == 0:
 		_ask_review_later()
+
+# Kazanma kartından sonraki bildirim sorusu: cevap ne olursa olsun sonraki seviyeye geçilir.
+func _on_reminder_answer(yes: bool) -> void:
+	_reminders.answer(yes, "level_win")
+	_on_next()
 
 # Oyuncunun en mutlu anı: kazanma kartı açıldıktan biraz sonra (konfeti, "PERFECT").
 # "Next"e erken basılıp reklam açıldıysa sorma (pencere reklamın üstüne çıkıp boşa giderdi);
@@ -704,6 +719,10 @@ func _on_next() -> void:
 			GameData.save()
 		Analytics.log_event("race_card", {"kind": "intro" if p.get("intro", false) else "rank_up", "level": level})
 		hud.show_race(p)
+		return
+	if level == REMIND_ASK_LEVEL and not _remind_asked and _reminders.should_ask():
+		_remind_asked = true
+		hud.show_reminder_ask()
 		return
 	var n := level + 1
 	if _review.busy():         # değerlendirme penceresi hazırlanıyor/açık: bu sefer reklam yok

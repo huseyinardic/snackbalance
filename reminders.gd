@@ -6,17 +6,22 @@ extends Node
 # bildirim var (oyun açılınca / hediye alınınca / arka plana geçince yeniden planlanır):
 #   - race_soon: Panda Yarışı'nın bitmesine ~3 sa kala (yarışta puanı varsa)
 #   - race_over: yarış bittiğinde (puanı varsa) — sonuç ve ödül
-#   - daily:     bugünün hediyesi alınmadıysa ve saat 18'den önceyse bugün 19:00, değilse yarın 19:00
+#   - daily:     bugünün hediyesi alınmadıysa ve saat 18'den önceyse bugün 19:00; değilse yarın,
+#                oyuncunun bugün oynadığı saatten ~1 sa önce (şimdi + 23 sa: herkesin oynama rutini
+#                farklı — öğle arası, yol, akşam). Bildirim her açılışta / arka plana geçişte
+#                yeniden kurulduğu için "şimdi" = son oynadığı an.
 # Bildirim yalnız 10:00–21:00 arası (yerel) gelir; gece düşen an kaydırılır.
 # Oyuncu açmazsa başka bildirim gelmez (günde en fazla 1, görmezden gelinince susar).
-# İzin (Android 13+): ilk günlük hediye alınınca hediye panelinde sorulur ("Remind me"),
-# evet derse sistem penceresi açılır. En fazla MAX_ASKS kez, aralarında ASK_GAP_DAYS gün.
+# İzin (Android 13+): 3. seviye kazanılınca (main) ve günlük hediye alınınca hediye panelinde
+# sorulur ("Remind me"), evet derse sistem penceresi açılır. En fazla MAX_ASKS kez, aralarında
+# ASK_GAP_DAYS gün.
 # Yalnız oyunun kendisiyle ilgili mesajlar (Play: bildirimde başka uygulama reklamı yok).
-# Analitik: notif_prompt {answer}, notif_permission {result}, notif_open {kind}.
+# Analitik: notif_prompt {answer, where}, notif_permission {result}, notif_open {kind, rule}.
 
 const REMIND_ID := 7201
 const CHANNEL_ID := "reminders"
 const HOUR := 19
+const HABIT_SECONDS := 23 * 3600   # yarınki hatırlatma: son oynamadan bu kadar sonra
 const DAY_START := 10
 const DAY_END := 21
 const SAVE_PATH := "user://reminders.cfg"
@@ -35,7 +40,8 @@ func _ready() -> void:
 	_ns.initialization_completed.connect(_on_initialized)
 	_ns.notification_opened.connect(func(d: NotificationData):
 		var cd := d.get_custom_data()
-		Analytics.log_event("notif_open", {"kind": cd.get_string_property("kind") if cd else ""}))
+		Analytics.log_event("notif_open", {"kind": cd.get_string_property("kind") if cd else "",
+			"rule": cd.get_string_property("rule") if cd else ""}))
 	_ns.post_notifications_permission_granted.connect(func(_p):
 		Analytics.log_event("notif_permission", {"result": "granted"})
 		refresh())
@@ -69,6 +75,7 @@ func refresh() -> void:
 	var delay: int = int(p["at"]) - _now()
 	var cd := CustomData.new()
 	cd.set_string_property("kind", p["kind"])
+	cd.set_string_property("rule", p.get("rule", "fixed"))
 	if OS.is_debug_build():           # telefonda hızlı deneme: 30 sn sonra gelen örnek (release'de yok)
 		_ns.schedule(NotificationData.new().set_id(REMIND_ID + 1).set_channel_id(CHANNEL_ID)
 			.set_title("[debug] " + p["title"]).set_content(p["text"] + " (in %d min)" % (delay / 60))
@@ -114,16 +121,16 @@ func _plan_daily() -> Dictionary:
 	# yarın: seri bugün oynandıysa bir artar
 	var s: int = GameData.streak + 1 if GameData.last_day == GameData.today() else 1
 	var day: int = (s - 1) % 7 + 1
-	var at := today_19 + 86400
+	var at := _daytime_clamp(t + HABIT_SECONDS)
 	if day == 7 and "crown" not in GameData.owned:
-		return {"kind": "daily", "at": at, "title": tr("Day 7: the Golden Crown is waiting! 👑"),
+		return {"kind": "daily", "rule": "habit", "at": at, "title": tr("Day 7: the Golden Crown is waiting! 👑"),
 			"text": tr("Come back and dress up your panda.")}
 	var bamboo: int = GameData.STREAK_DAY7 if day == 7 else GameData.STREAK_REWARDS[day - 1]
 	if s >= 3:
-		return {"kind": "daily", "at": at, "title": tr("Don't lose your %d-day streak! 🔥") % (s - 1),
+		return {"kind": "daily", "rule": "habit", "at": at, "title": tr("Don't lose your %d-day streak! 🔥") % (s - 1),
 			"text": tr("Day %d gift: +%d bamboo 🎋") % [s, bamboo]}
 	var msg := "+%d bamboo and fresh Swaps are waiting!" if GameData.level >= SWAP_UNLOCK_LEVEL else "+%d bamboo are waiting!"
-	return {"kind": "daily", "at": at, "title": tr("Your daily gift is ready 🎁"),
+	return {"kind": "daily", "rule": "habit", "at": at, "title": tr("Your daily gift is ready 🎁"),
 		"text": tr(msg) % bamboo}
 
 # Bitişten ~3 sa önce, gündüz saatine denk gelen ve en az 1 sa sonraki an (yoksa 0).
@@ -133,6 +140,16 @@ func _race_soon_time(end: int) -> int:
 		if t > _now() + 3600 and _is_daytime(t):
 			return t
 	return 0
+
+# t'yi aynı günün gündüz saatlerine çeker: 21:00 sonrası 20:00'ye, 10:00 öncesi 10:00'a
+# (gece oynayan oyuncuya hatırlatma yine akşam, sabah erkenci olana 10:00'da gelir).
+func _daytime_clamp(t: int) -> int:
+	var h := _local_hour(t)
+	if h >= DAY_END:
+		return _local_midnight(t) + (DAY_END - 1) * 3600
+	if h < DAY_START:
+		return _local_midnight(t) + DAY_START * 3600
+	return t
 
 # t gündüzse t; değilse sonraki 10:00.
 func _daytime_after(t: int) -> int:
@@ -172,13 +189,14 @@ func should_ask() -> bool:
 	var last := int(cfg.get_value("ask", "last_unix", 0))
 	return asks < MAX_ASKS and int(Time.get_unix_time_from_system()) - last >= ASK_GAP_DAYS * 86400
 
-# Panelin cevabı. Evet: sistem izin penceresi (sonucu sinyalle gelir, verilirse refresh).
-func answer(yes: bool) -> void:
+# Sorunun cevabı (where: "daily" hediye paneli, "level_win" kazanma kartı sonrası). Evet: sistem
+# izin penceresi (sonucu sinyalle gelir, verilirse refresh).
+func answer(yes: bool, where := "daily") -> void:
 	var cfg := ConfigFile.new()
 	cfg.load(SAVE_PATH)
 	cfg.set_value("ask", "count", int(cfg.get_value("ask", "count", 0)) + 1)
 	cfg.set_value("ask", "last_unix", int(Time.get_unix_time_from_system()))
 	cfg.save(SAVE_PATH)
-	Analytics.log_event("notif_prompt", {"answer": "yes" if yes else "no"})
+	Analytics.log_event("notif_prompt", {"answer": "yes" if yes else "no", "where": where})
 	if yes and _ns:
 		_ns.request_post_notifications_permission()

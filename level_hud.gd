@@ -51,6 +51,7 @@ var _race_pop_sub: Label
 var _race_pop_board: RaceBoard
 var _race_pop_msg: Label
 var _race_pop_btn: UiKit.Btn
+var _ask_pop: Control           # kazanma kartından sonra bildirim izni sorusu
 var _btn_ad: UiKit.Btn
 var _btn_main: UiKit.Btn
 var _btn_home: UiKit.Btn
@@ -72,6 +73,7 @@ signal continue_pressed
 signal pause_pressed
 signal resume_pressed
 signal race_continue
+signal reminder_answer(yes: bool)
 
 # Küçük yiyecek simgesi: yiyeceğin kendi çizimi (Food.paint) kutuya sığdırılır.
 class FoodIcon extends Control:
@@ -493,6 +495,7 @@ func _ready() -> void:
 	add_child(_fly_heart)
 
 	_build_race_pop()
+	_build_ask_pop()
 	_apply_top_inset()
 
 # Seviye sonu Panda Yarışı kartı (kazanma kartının üstünde): yarış açılınca tanıtım,
@@ -566,6 +569,68 @@ func show_race(p: Dictionary) -> void:
 func _on_race_pop_btn() -> void:
 	_race_pop.visible = false
 	race_continue.emit()
+
+class GiftIcon extends Control:
+	func _draw() -> void:
+		UiKit.gift(self, size / 2.0, size.y)
+
+# Bildirim sorusu (hediye panelindekinin aynısı, oyun içinde): hediye kutusu, soru, iki düğme.
+func _build_ask_pop() -> void:
+	_ask_pop = Control.new()
+	_ask_pop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_ask_pop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ask_pop.visible = false
+	var block := UiKit.Blocker.new()
+	block.color = Color(0, 0, 0, 0.5)
+	_ask_pop.add_child(block)
+	var card := PanelContainer.new()
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_theme_stylebox_override("panel", UiKit.panel_style())
+	card.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	card.offset_left = -310.0
+	card.offset_right = 310.0
+	card.offset_top = -210.0
+	card.offset_bottom = 210.0
+	var margin := MarginContainer.new()
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 26)
+	var box := VBoxContainer.new()
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 16)
+	var gift := GiftIcon.new()
+	gift.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	gift.custom_minimum_size = Vector2(120, 110)
+	gift.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(gift)
+	var q := UiKit.ink_label("Want a reminder when\nyour next gift is ready?", UiKit.BOLD, 34, Color(0.85, 0.45, 0.1))
+	box.add_child(q)
+	var row := HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 16)
+	row.add_child(UiKit.btn("REMIND ME", UiKit.GREEN, 270, 92, 34, _on_ask.bind(true)))
+	row.add_child(UiKit.btn("NO THANKS", UiKit.GREY, 220, 92, 28, _on_ask.bind(false)))
+	box.add_child(row)
+	margin.add_child(box)
+	card.add_child(margin)
+	_ask_pop.add_child(card)
+	add_child(_ask_pop)
+
+func show_reminder_ask() -> void:
+	_ask_pop.visible = true
+	var card: Control = _ask_pop.get_child(1)
+	card.pivot_offset = card.size / 2.0
+	card.scale = Vector2(0.7, 0.7)
+	create_tween().tween_property(card, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	Sfx.play("reward", -3.0)
+
+func _on_ask(yes: bool) -> void:
+	if not _ask_pop.visible:
+		return
+	_ask_pop.visible = false
+	reminder_answer.emit(yes)
 
 func _label(text: String, font: Font, size: int, color: Color) -> Label:
 	var l := Label.new()
