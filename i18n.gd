@@ -138,6 +138,17 @@ const PT := {
 	"Your daily gift is ready 🎁": "Seu presente diário chegou 🎁",
 	"+%d bamboo and fresh Swaps are waiting!": "+%d bambus e novas Trocas te esperam!",
 	"+%d bamboo are waiting!": "+%d bambus te esperam!",
+	# 1.0.35: kazanma kartı yeniliği ve yarış hatırlatması
+	"Next level: new %s!": "Novidade na próxima fase: %s!",
+	"Cheese": "Queijo",
+	"Toast": "Torrada",
+	"Pizza": "Pizza",
+	"Watermelon": "Melancia",
+	"Apple": "Maçã",
+	"You dropped to %s place in the Panda Race! 🐼": "Você caiu para o %s lugar na Corrida do Panda! 🐼",
+	"Win a level to climb back up!": "Vença uma fase para subir de novo!",
+	"You're in %s place in the Panda Race! 🏆": "Você está em %s lugar na Corrida do Panda! 🏆",
+	"Rivals are catching up. Keep your spot!": "Os rivais estão chegando. Segure sua posição!",
 }
 
 const TR := {
@@ -272,6 +283,17 @@ const TR := {
 	"Your daily gift is ready 🎁": "Günlük hediyen hazır 🎁",
 	"+%d bamboo and fresh Swaps are waiting!": "+%d bambu ve yeni değiştirme hakları seni bekliyor!",
 	"+%d bamboo are waiting!": "+%d bambu seni bekliyor!",
+	# 1.0.35: kazanma kartı yeniliği ve yarış hatırlatması
+	"Next level: new %s!": "Sonraki bölümde yeni: %s!",
+	"Cheese": "Peynir",
+	"Toast": "Tost",
+	"Pizza": "Pizza",
+	"Watermelon": "Karpuz",
+	"Apple": "Elma",
+	"You dropped to %s place in the Panda Race! 🐼": "Panda Yarışı'nda %s sıraya düştün! 🐼",
+	"Win a level to climb back up!": "Geri yükselmek için bir bölüm kazan!",
+	"You're in %s place in the Panda Race! 🏆": "Panda Yarışı'nda %s sıradasın! 🏆",
+	"Rivals are catching up. Keep your spot!": "Rakipler yaklaşıyor, yerini koru!",
 }
 
 # İspanyolca (Latin Amerika, "tú"): bütün "es" yerellerini karşılar.
@@ -407,6 +429,17 @@ const ES := {
 	"Your daily gift is ready 🎁": "Tu regalo diario está listo 🎁",
 	"+%d bamboo and fresh Swaps are waiting!": "¡+%d de bambú y nuevos Cambios te esperan!",
 	"+%d bamboo are waiting!": "¡+%d de bambú te esperan!",
+	# 1.0.35: kazanma kartı yeniliği ve yarış hatırlatması
+	"Next level: new %s!": "¡Novedad en el próximo nivel: %s!",
+	"Cheese": "Queso",
+	"Toast": "Pan tostado",
+	"Pizza": "Pizza",
+	"Watermelon": "Sandía",
+	"Apple": "Manzana",
+	"You dropped to %s place in the Panda Race! 🐼": "¡Bajaste al %s puesto en la Carrera Panda! 🐼",
+	"Win a level to climb back up!": "¡Gana un nivel para volver a subir!",
+	"You're in %s place in the Panda Race! 🏆": "¡Vas en %s puesto en la Carrera Panda! 🏆",
+	"Rivals are catching up. Keep your spot!": "Los rivales se acercan. ¡Defiende tu lugar!",
 }
 
 # Endonezce ("kamu"). Eski Android'ler dili "in" diye bildirir; setup() onu "id"ye çevirir.
@@ -542,6 +575,17 @@ const ID := {
 	"Your daily gift is ready 🎁": "Hadiah harianmu sudah siap 🎁",
 	"+%d bamboo and fresh Swaps are waiting!": "+%d bambu dan Tukar baru menunggumu!",
 	"+%d bamboo are waiting!": "+%d bambu menunggumu!",
+	# 1.0.35: kazanma kartı yeniliği ve yarış hatırlatması
+	"Next level: new %s!": "Baru di level berikutnya: %s!",
+	"Cheese": "Keju",
+	"Toast": "Roti Panggang",
+	"Pizza": "Pizza",
+	"Watermelon": "Semangka",
+	"Apple": "Apel",
+	"You dropped to %s place in the Panda Race! 🐼": "Kamu turun ke peringkat %s di Balapan Panda! 🐼",
+	"Win a level to climb back up!": "Menangkan satu level untuk naik lagi!",
+	"You're in %s place in the Panda Race! 🏆": "Kamu di peringkat %s di Balapan Panda! 🏆",
+	"Rivals are catching up. Keep your spot!": "Lawan mulai mendekat. Pertahankan posisimu!",
 }
 
 # Almanca ("du"). Uzun kelimeler: Btn ve GoalBar yazıyı sığmazsa küçültür.
@@ -677,6 +721,17 @@ const DE := {
 	"Your daily gift is ready 🎁": "Dein Tagesgeschenk ist bereit 🎁",
 	"+%d bamboo and fresh Swaps are waiting!": "+%d Bambus und neue Tausch-Joker warten!",
 	"+%d bamboo are waiting!": "+%d Bambus warten auf dich!",
+	# 1.0.35: kazanma kartı yeniliği ve yarış hatırlatması
+	"Next level: new %s!": "Neu im nächsten Level: %s!",
+	"Cheese": "Käse",
+	"Toast": "Toast",
+	"Pizza": "Pizza",
+	"Watermelon": "Melone",
+	"Apple": "Apfel",
+	"You dropped to %s place in the Panda Race! 🐼": "Du bist im Panda-Rennen auf den %s Platz gefallen! 🐼",
+	"Win a level to climb back up!": "Gewinne ein Level, um wieder aufzusteigen!",
+	"You're in %s place in the Panda Race! 🏆": "Du bist im Panda-Rennen auf dem %s Platz! 🏆",
+	"Rivals are catching up. Keep your spot!": "Die Rivalen holen auf. Halte deinen Platz!",
 }
 
 static var _done := false

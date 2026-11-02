@@ -59,8 +59,11 @@ const FREE_CONTINUE_MAX_LEVEL := 8   # bu seviyeye dek Continue reklamsız (dene
 const REVIEW_MIN_LEVEL := 8      # değerlendirme penceresi en erken bu seviyenin kazanılmasında
 const GOAL_LEVEL := 5            # ilk kez kazanılınca "level_5_complete": Google Ads'in hedefi (kurulum
                                  # yerine oyunu anlayıp oynayan oyuncu; olay adıyla aktarılır)
-const REMIND_ASK_LEVEL := 3      # bu seviye kazanılınca "Next"ten önce bildirim izni sorulur (hediye
-                                 # paneline yeni oyuncu pek uğramıyordu: izin sorulan %5'ti)
+const REMIND_ASK_LEVEL := 2      # bu seviye kazanılınca "Next"ten önce bildirim izni sorulur (hediye
+                                 # paneline yeni oyuncu pek uğramıyordu: izin sorulan %5'ti). 3'teydi:
+                                 # %82 evet ama oyuncuların yarısı 3'e gelmeden gidiyordu
+# Kazanma kartındaki "sıradaki yenilik" satırı için yiyecek adları (çevrilir)
+const FOOD_NAMES := {Levels.C: "Cheese", Levels.T: "Toast", Levels.P: "Pizza", Levels.W: "Watermelon", Levels.A: "Apple"}
 const CONTINUE_MAX_DEG := 18.0   # geri sarınca kiriş en çok bu eğimde, oyuncu yiyeceği koyana dek sabit
 const MENU_ZOOM := 2.0           # menüde kamera pandaya bu kadar yaklaşır
 const CAMERA_SECONDS := 0.6      # menü <-> oyun kamera geçişi
@@ -394,6 +397,11 @@ func _set_camera(menu_view: bool, instant: bool) -> void:
 # Android geri tuşu: panel -> kapat, oyun -> duraklat, duraklatılmış -> devam,
 # kart -> menü, menü -> arka plana.
 func _notification(what: int) -> void:
+	# Analitik: bölümün ortasında arka plana geçti (ilk bölümlerde çok oyuncu yarıda bırakıyordu;
+	# nerede ve ne zaman olduğunu görmek için): geçen sn, konan yiyecek, kiriş eğimi
+	if what == NOTIFICATION_APPLICATION_PAUSED and (phase == Phase.PLAYING or phase == Phase.HOLDING):
+		Analytics.log_event("level_background", {"level": level, "seconds": _level_seconds(),
+			"placed": _seq_index, "tilt": roundi(rad_to_deg(absf(_beam_angle()))), "panda_hits": panda_hits})
 	if what != NOTIFICATION_WM_GO_BACK_REQUEST:
 		return
 	if phase == Phase.MENU:
@@ -568,6 +576,7 @@ func _win() -> void:
 		GameData.bamboo, GameData.sunset_unlocked() and not had_sunset, Ads.rewarded_ready())
 	hud.set_win_streak(GameData.win_streak, true)
 	hud.set_race_result(race, race_opened)
+	hud.set_next_teaser(_next_teaser())
 	panda.celebrate()
 	GameData.vibrate(60)
 	if level >= REVIEW_MIN_LEVEL and panda_hits == 0:
@@ -666,6 +675,12 @@ func _try_swap() -> void:
 	create_tween().tween_property(f, "modulate", Color.WHITE, 0.35)
 	Sfx.play("swap")
 	GameData.vibrate(30)
+
+# Kazanma kartında sıradaki bölümün yeni yiyeceği ("Next level: new Toast!"): ilk bölümlerde
+# oyuncuların bir kısmı bölümü kazanıp gidiyordu — devam etmek için bir merak yoktu.
+func _next_teaser() -> String:
+	var k := Levels.new_kind(level + 1)
+	return "" if not FOOD_NAMES.has(k) else tr("Next level: new %s!") % tr(FOOD_NAMES[k])
 
 func _level_seconds() -> int:
 	return int(float(Time.get_ticks_msec() - _level_msec) / 1000.0)

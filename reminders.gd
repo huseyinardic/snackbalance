@@ -12,7 +12,7 @@ extends Node
 #                yeniden kurulduğu için "şimdi" = son oynadığı an.
 # Bildirim yalnız 10:00–21:00 arası (yerel) gelir; gece düşen an kaydırılır.
 # Oyuncu açmazsa başka bildirim gelmez (günde en fazla 1, görmezden gelinince susar).
-# İzin (Android 13+): 3. seviye kazanılınca (main) ve günlük hediye alınınca hediye panelinde
+# İzin (Android 13+): 2. seviye kazanılınca (main) ve günlük hediye alınınca hediye panelinde
 # sorulur ("Remind me"), evet derse sistem penceresi açılır. En fazla MAX_ASKS kez, aralarında
 # ASK_GAP_DAYS gün.
 # Yalnız oyunun kendisiyle ilgili mesajlar (Play: bildirimde başka uygulama reklamı yok).
@@ -129,9 +129,33 @@ func _plan_daily() -> Dictionary:
 	if s >= 3:
 		return {"kind": "daily", "rule": "habit", "at": at, "title": tr("Don't lose your %d-day streak! 🔥") % (s - 1),
 			"text": tr("Day %d gift: +%d bamboo 🎋") % [s, bamboo]}
+	var race := _race_daily(at)
+	if not race.is_empty():
+		return race
 	var msg := "+%d bamboo and fresh Swaps are waiting!" if GameData.level >= SWAP_UNLOCK_LEVEL else "+%d bamboo are waiting!"
 	return {"kind": "daily", "rule": "habit", "at": at, "title": tr("Your daily gift is ready 🎁"),
 		"text": tr(msg) % bamboo}
+
+# Yarındaki hatırlatma, oyuncu Panda Yarışı'ndaysa yarışla: bildirimin geleceği anki sıra
+# rakip eğrisiyle önceden hesaplanır. Yarış 3 gün sürüyor, race_soon/race_over ancak 3. gün
+# geliyordu; yeni oyuncunun yarısı ilk gün yarışa giriyor. Sıra düşecekse "düştün", ilk 3'teyse
+# "yerini koru"; yoksa {} (hediye metni). rule = "race" (notif_open'da ayrı ölçülür).
+func _race_daily(at: int) -> Dictionary:
+	if not Race.unlocked() or GameData.race_start <= 0 or GameData.race_points <= 0 or Race.is_over():
+		return {}
+	if at >= GameData.race_start + Race.DURATION:
+		return {}
+	var now_rank := Race.rank()
+	var at_rank := Race.rank(clampf(float(at - GameData.race_start) / Race.DURATION, 0.0, 1.0))
+	if at_rank > now_rank:
+		return {"kind": "daily", "rule": "race", "at": at,
+			"title": tr("You dropped to %s place in the Panda Race! 🐼") % I18n.ordinal(at_rank),
+			"text": tr("Win a level to climb back up!")}
+	if at_rank <= 3:
+		return {"kind": "daily", "rule": "race", "at": at,
+			"title": tr("You're in %s place in the Panda Race! 🏆") % I18n.ordinal(at_rank),
+			"text": tr("Rivals are catching up. Keep your spot!")}
+	return {}
 
 # Bitişten ~3 sa önce, gündüz saatine denk gelen ve en az 1 sa sonraki an (yoksa 0).
 func _race_soon_time(end: int) -> int:

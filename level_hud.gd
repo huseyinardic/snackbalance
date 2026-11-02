@@ -766,6 +766,13 @@ func show_win(level: int, rewards: Array, total: int, perfect: bool, goal: Dicti
 	Sfx.play("win")
 	Sfx.play_later(0.75, "reward", -3.0)
 
+# Kazanma kartında sıradaki bölümün yeniliği (yeni tema / yarış satırı yoksa); "" = yok.
+func set_next_teaser(text: String) -> void:
+	if text == "" or _new_theme.visible:
+		return
+	_new_theme.text = text
+	_new_theme.visible = true
+
 # x2 alınınca toplam büyüyerek güncellenir, sıradaki hedef çubuğu da.
 # Kazanma kartında Panda Yarışı satırı: "Race +12 (3 x4)" ve sıra değiştiyse yeni sıra.
 # race: main._win sözlüğü ({} = yarış yok); opened: bu galibiyetle yarış açıldı.
