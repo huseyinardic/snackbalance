@@ -52,7 +52,6 @@ const COACH_SMOOTH := 6.0        # halkanın yeni hedefe kayma hızı
 const COACH_TIP_DEG := 4.0       # 1. seviye: kiriş bu kadar eğilince panda "Balance it!" der
 const COACH_TIP_OFF_DEG := 2.0   # ... bu açının altına düzelince susar
 const PANDA_TIP_LEVEL := 2       # "Not on the panda!" uyarısının öğretildiği seviye
-const CONTINUE_MIN_LEVEL := 3    # kaybedince "Continue" reklam teklifi bu seviyeden itibaren
 const FREE_CONTINUE_MAX_LEVEL := 8   # bu seviyeye dek Continue reklamsız (deneme başına 1): oyuncuların
 									 # çoğu ilk seviyelerde bir kayıptan hemen sonra bırakıyordu
 const REVIEW_MIN_LEVEL := 8      # değerlendirme penceresi en erken bu seviyenin kazanılmasında
@@ -118,6 +117,7 @@ var _panda_tip: PandaTip
 var _panda_tip_on := false       # uyarı şu an görünüyor (panda da endişelenir)
 var _panda_tip_logged := false   # analitik: panda_tip_shown oturumda bir kez
 var _continue_used := false      # bu denemede Continue kullanıldı mı (deneme başına 1)
+var _offer_free := false         # kartta gösterilen Continue reklamsız mı (_lose_offer)
 var _lose_cause := ""            # "tilt" | "panda"
 var _streak_lost := 0            # bu kayıpla sıfırlanan galibiyet serisi (Continue geri verir)
 var _golden := {}                # Panda Yarışı: altın bambulu yiyeceklerin sıra no'ları (seq -> true)
@@ -739,19 +739,22 @@ func _offer_swap_ad() -> bool:
 
 # Kaybetme kartındaki tek teklif. Önce "Continue" (deneme başına bir kez): pandaya
 # 2. vuruşta +1 can, devrilmede son yiyeceği geri al — ilk seviyelerde reklamsız ("_free"),
-# sonra ödüllü reklamla. Yoksa Swap'ı bitmiş oyuncuya "+1 Swap".
+# sonra ödüllü reklamla. Ödüllü reklam yoksa (yüklenemedi / reklamlar kapalı) yine reklamsız:
+# L9'da Continue birden kayboluyordu, ulaşanların yarısı orada kalıyordu. Continue yoksa
+# Swap'ı bitmiş oyuncuya "+1 Swap".
 func _lose_offer() -> String:
+	_offer_free = false
 	if not _continue_used and not _snap.is_empty() and _lose_cause in ["panda", "tilt"]:
-		if level <= FREE_CONTINUE_MAX_LEVEL:
+		if level <= FREE_CONTINUE_MAX_LEVEL or not Ads.rewarded_ready():
+			_offer_free = true
 			return "continue_%s_free" % _lose_cause
-		if level >= CONTINUE_MIN_LEVEL and Ads.rewarded_ready():
-			return "continue_" + _lose_cause
+		return "continue_" + _lose_cause
 	return "swap" if _offer_swap_ad() else ""
 
 func _on_continue() -> void:
 	if phase != Phase.LOST or _continue_used or Ads.busy():
 		return
-	if level <= FREE_CONTINUE_MAX_LEVEL:
+	if _offer_free:
 		_continue_level(true)
 		return
 	Ads.show_rewarded(func(earned: bool):
