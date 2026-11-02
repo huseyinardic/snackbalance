@@ -19,10 +19,10 @@ const HAND_MADE := [
 	{"foods": [S, C, P, S, C], "hint": "New: Pizza — sharp top!"},
 	{"foods": [S, P, C, T, P, S], "hint": "New: Swap a hard food!"},
 	{"foods": [S, C, W, T, S, C], "hint": "New: Watermelon — very heavy!"},
-	{"foods": [S, W, C, P, T, W, S], "hint": ""},
+	{"foods": [S, W, C, P, T, C, S], "hint": ""},                  # karpuz tanıtılır tanıtılmaz 2 tane fazlaydı
 	{"foods": [S, C, A, T, S, C, S], "hint": "New: Apple — it rolls!"},
 	{"foods": [S, P, W, C, A, T, S, C], "hint": ""},
-	{"foods": [S, W, P, A, C, T, W, P, S], "hint": ""},
+	{"foods": [S, W, P, A, C, T, C, P, S], "hint": ""},            # 2 karpuz + 2 pizza: geçen başına 19 deneme
 ]
 
 # Seviye için: sıralı yiyecek listesi, ipucu metni ve (yiyecek kirişten düşerse

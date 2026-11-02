@@ -23,7 +23,9 @@ const TILT_LIMIT_DEG := 33.0     # bu açıyı geçince oyun biter
 # ödüllendirir, hep aynı tarafa koyan yine devirir. Panda Yarışı açılana dek azalarak söner.
 const BEAM_ASSIST := 300000.0
 const BEAM_ASSIST_MAX_DEG := 15.0   # yay bu eğimden sonra güçlenmez: büyük eğimde kiriş doğal davranır
-const BEAM_ASSIST_BY_LEVEL := [1.0, 1.0, 1.0, 1.0, 0.8, 0.6, 0.4, 0.2]   # 1..8. seviye; sonrası 0
+# 1..11. seviye; sonrası 0. Yavaş azalır: 9'da birden 0'a düşüyordu, L6–7 ve L9–10 oyuncu
+# kaybettiren tepelerdi (geçen başına 7–19 deneme; L7'de kalanların yalnız %3'ü ertesi gün döndü)
+const BEAM_ASSIST_BY_LEVEL := [1.0, 1.0, 1.0, 1.0, 0.9, 0.8, 0.7, 0.6, 0.45, 0.3, 0.15]
 const HOLD_SECONDS := 3.0        # son yiyecekten sonra dengede tutma süresi
 const HOVER_Y := 340.0           # yiyeceğin bekleme yüksekliği (HOVER_DROP); en yüksek yığın bile ~730'u geçmiyor
 const DROP_START_SPEED := 300.0  # bırakınca ilk düşüş hızı (px/sn)
