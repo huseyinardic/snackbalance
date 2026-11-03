@@ -57,8 +57,10 @@ const PANDA_TIP_LEVEL := 2       # "Not on the panda!" uyarısının öğretildi
 const FREE_CONTINUE_MAX_LEVEL := 8   # bu seviyeye dek Continue reklamsız (deneme başına 1): oyuncuların
 									 # çoğu ilk seviyelerde bir kayıptan hemen sonra bırakıyordu
 const REVIEW_MIN_LEVEL := 8      # değerlendirme penceresi en erken bu seviyenin kazanılmasında
-const GOAL_LEVEL := 5            # ilk kez kazanılınca "level_5_complete": Google Ads'in hedefi (kurulum
-                                 # yerine oyunu anlayıp oynayan oyuncu; olay adıyla aktarılır)
+# İlk kez kazanılınca "level_N_complete": Google Ads'in hedefi (kurulum yerine oyunu anlayıp
+# oynayan oyuncu; olay adıyla aktarılır). 8 daha güçlü sinyal: L8'e varanların %44'ü ertesi gün
+# dönüyor, L4–7'de kalanların %3–12'si (L5'i ise yeni oyuncuların ~üçte biri ilk gün bitiriyor)
+const GOAL_LEVELS := [5, 8]
 const REMIND_ASK_LEVEL := 2      # bu seviye kazanılınca "Next"ten önce bildirim izni sorulur (hediye
                                  # paneline yeni oyuncu pek uğramıyordu: izin sorulan %5'ti). 3'teydi:
                                  # %82 evet ama oyuncuların yarısı 3'e gelmeden gidiyordu
@@ -569,8 +571,8 @@ func _win() -> void:
 		"win_streak": GameData.win_streak,
 		"race_points": race.get("points", 0),
 	})
-	if first_clear and level == GOAL_LEVEL:
-		Analytics.log_event("level_5_complete")
+	if first_clear and level in GOAL_LEVELS:
+		Analytics.log_event("level_%d_complete" % level)
 	beam_visual.modulate = Color.WHITE
 	hud.show_win(level, rewards, _reward, panda_hits == 0 and _drops == 0, Accessories.next_goal(GameData.owned),
 		GameData.bamboo, GameData.sunset_unlocked() and not had_sunset, Ads.rewarded_ready())
