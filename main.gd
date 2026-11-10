@@ -997,13 +997,15 @@ func _update_panda_tip() -> void:
 	var on := not GameData.panda_tip_done and level == PANDA_TIP_LEVEL and phase == Phase.PLAYING \
 		and f != null and f.freeze and not _dropping and _guide.active and _guide.danger
 	_guide.emphasis = on
+	var teach := on                                  # 2. seviyenin bırakmadan önceki uyarısı
 	on = on or (_soft_tip_t > 0.0 and (phase == Phase.PLAYING or phase == Phase.HOLDING))
 	_panda_tip_on = on
 	if not on:
 		_panda_tip.hide_tip()
 		return
 	_panda_tip.show_at(panda.get_global_transform_with_canvas() * Vector2(0, -68))
-	if not _panda_tip_logged:
+	# analitik yalnız 2. seviye uyarısını sayar (1. seviyenin vuruş sonrası uyarısı: panda_soft_hit)
+	if teach and not _panda_tip_logged:
 		_panda_tip_logged = true
 		Analytics.log_event("panda_tip_shown")
 
