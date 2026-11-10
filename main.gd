@@ -23,9 +23,11 @@ const TILT_LIMIT_DEG := 33.0     # bu açıyı geçince oyun biter
 # ödüllendirir, hep aynı tarafa koyan yine devirir. Panda Yarışı açılana dek azalarak söner.
 const BEAM_ASSIST := 300000.0
 const BEAM_ASSIST_MAX_DEG := 15.0   # yay bu eğimden sonra güçlenmez: büyük eğimde kiriş doğal davranır
-# 1..11. seviye; sonrası 0. Yavaş azalır: 9'da birden 0'a düşüyordu, L6–7 ve L9–10 oyuncu
-# kaybettiren tepelerdi (geçen başına 7–19 deneme; L7'de kalanların yalnız %3'ü ertesi gün döndü)
-const BEAM_ASSIST_BY_LEVEL := [1.0, 1.0, 1.0, 1.0, 0.9, 0.8, 0.7, 0.6, 0.45, 0.3, 0.15]
+# 1..20. seviye; sonrası 0. Karpuzun geldiği 6–7'de tam güç, sonra yavaş söner. Eskiden 5'ten
+# itibaren azalıp 12'de birden 0'a iniyordu: 6'da karpuzla birlikte yardım da azalıyordu (geçen %73)
+# ve 12 en büyük duvardı (geçen %53, geçene kadar 11,8 kayıp; 31 Ekim–9 Kasım yeni oyuncular)
+const BEAM_ASSIST_BY_LEVEL := [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.8, 0.7, 0.6, 0.5, 0.45, 0.4,
+	0.35, 0.3, 0.25, 0.2, 0.15, 0.1, 0.05]
 const HOLD_SECONDS := 3.0        # son yiyecekten sonra dengede tutma süresi
 const HOVER_Y := 340.0           # yiyeceğin bekleme yüksekliği (HOVER_DROP); en yüksek yığın bile ~730'u geçmiyor
 const DROP_START_SPEED := 300.0  # bırakınca ilk düşüş hızı (px/sn)
@@ -54,6 +56,10 @@ const COACH_SMOOTH := 6.0        # halkanın yeni hedefe kayma hızı
 const COACH_TIP_DEG := 4.0       # 1. seviye: kiriş bu kadar eğilince panda "Balance it!" der
 const COACH_TIP_OFF_DEG := 2.0   # ... bu açının altına düzelince susar
 const PANDA_TIP_LEVEL := 2       # "Not on the panda!" uyarısının öğretildiği seviye
+# 1. seviyede panda vuruşu can götürmez: yiyecek kaybolur, panda irkilir, "Not on the panda!" çıkar.
+# 1. seviye kayıplarının %39'u pandaydı; yeni oyuncu kuralı öğrenmeden kaybetmesin.
+const SOFT_PANDA_LEVEL := 1
+const SOFT_TIP_SECONDS := 2.5
 const FREE_CONTINUE_MAX_LEVEL := 8   # bu seviyeye dek Continue reklamsız (deneme başına 1): oyuncuların
 									 # çoğu ilk seviyelerde bir kayıptan hemen sonra bırakıyordu
 const REVIEW_MIN_LEVEL := 8      # değerlendirme penceresi en erken bu seviyenin kazanılmasında
@@ -123,6 +129,7 @@ var _tutorial_idle := 0.0        # yiyecek kaç sn'dir dokunulmadan bekliyor
 var _panda_tip: PandaTip
 var _panda_tip_on := false       # uyarı şu an görünüyor (panda da endişelenir)
 var _panda_tip_logged := false   # analitik: panda_tip_shown oturumda bir kez
+var _soft_tip_t := 0.0           # 1. seviye: pandaya düşen yiyecekten sonra uyarının kalan süresi
 var _continue_used := false      # bu denemede Continue kullanıldı mı (deneme başına 1)
 var _offer_free := false         # kartta gösterilen Continue reklamsız mı (_lose_offer)
 var _lose_cause := ""            # "tilt" | "panda"
@@ -288,6 +295,7 @@ func _start_level(n: int, retry: bool = false) -> void:
 	_seq_index = 0
 	phase = Phase.PLAYING
 	panda_hits = 0
+	_soft_tip_t = 0.0
 	_drops = 0
 	_doubled = false
 	_swap_used = false
@@ -470,6 +478,7 @@ func _process(delta: float) -> void:
 
 	_update_food(delta)
 	_update_tutorial(delta)
+	_soft_tip_t = maxf(0.0, _soft_tip_t - delta)
 	_update_panda_tip()
 	_update_balance_tip()
 	if phase == Phase.LOST:   # iniş pandaya ikinci vuruş olduysa
@@ -988,6 +997,7 @@ func _update_panda_tip() -> void:
 	var on := not GameData.panda_tip_done and level == PANDA_TIP_LEVEL and phase == Phase.PLAYING \
 		and f != null and f.freeze and not _dropping and _guide.active and _guide.danger
 	_guide.emphasis = on
+	on = on or (_soft_tip_t > 0.0 and (phase == Phase.PLAYING or phase == Phase.HOLDING))
 	_panda_tip_on = on
 	if not on:
 		_panda_tip.hide_tip()
@@ -1264,6 +1274,15 @@ func _panda_hit(food: Food) -> void:
 	fade.tween_property(food, "modulate:a", 0.0, 0.25)
 	fade.tween_callback(food.queue_free)
 
+	if level == SOFT_PANDA_LEVEL:                    # can gitmez: kural öğretilir
+		Sfx.play("bonk")
+		GameData.vibrate(50)
+		panda.set_hits(1)                            # irkilme ve "ah" yüzü…
+		panda.hits = 0                               # …ama yara bandı yok
+		panda.queue_redraw()
+		_soft_tip_t = SOFT_TIP_SECONDS
+		Analytics.log_event("panda_soft_hit", {"level": level})
+		return
 	panda_hits += 1
 	if level == PANDA_TIP_LEVEL:
 		GameData.complete_panda_tip()
