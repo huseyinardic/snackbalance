@@ -123,22 +123,47 @@ func _initialize() -> void:
 	_load_interstitial()
 	_load_rewarded()
 
-# UMP, oyuncunun hangi amaçlara izin verdiğini Godot'a ayrıntılı vermediği için onay
-# gerektiren bölgelerde (AB/İngiltere) analitik kapalı kalır; başka yerlerde açılır.
-# Debug build'de test cihazı AB taklit ettiği için her zaman açık (DebugView ile denensin).
+# Onay gerektirmeyen bölgelerde analitik açık. AB/İngiltere'de oyuncunun seçimi UMP'nin cihaza
+# yazdığı TCF dizesinden okunur: eskiden oradaki herkes için kapalıydı (onay verse bile), AB'den
+# gelen oyuncu hiç görünmüyordu. Debug build'de test cihazı AB taklit eder: TCF yolu telefonda
+# denenebilir (onay formunda kabul / ret, logcat'te "TCF").
 func _apply_analytics_consent() -> void:
 	if OS.get_name() != "Android":
-		return
-	if OS.is_debug_build():
-		Analytics.set_consent(true)
 		return
 	match UserMessagingPlatform.consent_information.get_consent_status():
 		ConsentInformation.ConsentStatus.NOT_REQUIRED:
 			Analytics.set_consent(true)
 		ConsentInformation.ConsentStatus.REQUIRED, ConsentInformation.ConsentStatus.OBTAINED:
-			Analytics.set_consent(false)
+			_apply_tcf_consent()
 		_:
-			pass   # UNKNOWN (ör. çevrimdışı): önceki açılıştaki kalıcı tercih geçerli kalsın
+			# UNKNOWN (ör. çevrimdışı): önceki açılıştaki kalıcı tercih geçerli kalsın
+			if OS.is_debug_build():
+				Analytics.set_consent(true)
+
+# TCF amaçları (1'den başlar; dizenin i. karakteri i+1. amaç, "1" = onay). Google'ın onay
+# modu eşlemesi: reklam depolama = 1, reklam kullanıcı verisi = 1 ve 7, kişiselleştirme = 3 ve 4.
+# Analitik: 1 (cihazda bilgi saklama) ve ölçüm amaçlarından biri (8 içerik ölçümü, 9 kitle
+# istatistiği). Dize boşsa (form kapatıldı / onay yok) hepsi reddedilmiş sayılır.
+func _apply_tcf_consent() -> void:
+	var p := _tcf_purposes()
+	var has := func(n: int) -> bool:
+		return p.length() >= n and p[n - 1] == "1"
+	var analytics: bool = has.call(1) and (has.call(8) or has.call(9))
+	Analytics.set_consent(analytics, has.call(1), has.call(1) and has.call(7), has.call(3) and has.call(4))
+	print("TCF purposes='", p, "' analytics=", analytics)
+
+# UMP, TCF dizesini uygulamanın varsayılan SharedPreferences'ına yazar ("<paket>_preferences").
+func _tcf_purposes() -> String:
+	if not Engine.has_singleton("AndroidRuntime"):
+		return ""
+	var ctx = Engine.get_singleton("AndroidRuntime").getApplicationContext()
+	if ctx == null:
+		return ""
+	var prefs = ctx.getSharedPreferences(str(ctx.getPackageName()) + "_preferences", 0)
+	if prefs == null:
+		return ""
+	var v = prefs.getString("IABTCF_PurposeConsents", "")
+	return "" if v == null else str(v)
 
 func _use_test_ids() -> bool:
 	return OS.is_debug_build() or APP_TEST or OS.get_name() != "Android"
@@ -154,7 +179,8 @@ func privacy_options_required() -> bool:
 
 func show_privacy_options() -> void:
 	if _mobile:
-		UserMessagingPlatform.show_privacy_options_form(func(_e: FormError): pass)
+		# oyuncu tercihini değiştirdiyse analitik de hemen ona uysun
+		UserMessagingPlatform.show_privacy_options_form(func(_e: FormError): _apply_analytics_consent())
 
 # --- geçiş reklamı ---
 

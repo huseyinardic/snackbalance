@@ -54,15 +54,18 @@ func _flush() -> void:
 		_fa.log_event(e[0], e[1])
 	_queue.clear()
 
-func set_consent(granted: bool) -> void:
+# Tek değer verilirse dört onay türü de ona eşit; AB/İngiltere'de ads.gd TCF'ten ayrı ayrı verir.
+func set_consent(granted: bool, ad_storage: Variant = null, ad_user_data: Variant = null,
+		ad_personalization: Variant = null) -> void:
 	if _fa == null:
 		return
-	var state := "granted" if granted else "denied"
+	var s := func(v: Variant) -> String:
+		return "granted" if (granted if v == null else bool(v)) else "denied"
 	_fa.set_consent({
-		"analytics_storage": state,
-		"ad_storage": state,
-		"ad_user_data": state,
-		"ad_personalization": state,
+		"analytics_storage": "granted" if granted else "denied",
+		"ad_storage": s.call(ad_storage),
+		"ad_user_data": s.call(ad_user_data),
+		"ad_personalization": s.call(ad_personalization),
 	})
 	_fa.set_analytics_collection_enabled(granted)
 
