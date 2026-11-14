@@ -16,7 +16,11 @@ extends Node
 # sorulur ("Remind me"), evet derse sistem penceresi açılır. En fazla MAX_ASKS kez, aralarında
 # ASK_GAP_DAYS gün.
 # Yalnız oyunun kendisiyle ilgili mesajlar (Play: bildirimde başka uygulama reklamı yok).
-# Analitik: notif_prompt {answer, where}, notif_permission {result}, notif_open {kind, rule}.
+# Soğuk açılış: bildirime dokunup uygulama kapalıyken açılınca eklenti "açıldı" sinyalini biz
+# bağlanmadan yayıyordu (notif_open ≈ 0 bir ölçüm hatasıydı). Başlatma bitince
+# get_notification_id() ile bakılır; kind/rule kurulurken kaydedilir; oturum başına bir kez sayılır.
+# Analitik: notif_prompt_shown {where}, notif_prompt {answer, where}, notif_permission {result},
+# notif_open {kind, rule, launch: cold|warm}.
 
 const REMIND_ID := 7201
 const CHANNEL_ID := "reminders"
@@ -31,6 +35,7 @@ const SWAP_UNLOCK_LEVEL := 5      # main.gd ile aynı
 
 var _ns: NotificationScheduler = null
 var _ready_ok := false
+var _open_logged := false
 
 func _ready() -> void:
 	if OS.get_name() != "Android" or not Engine.has_singleton(NotificationScheduler.PLUGIN_SINGLETON_NAME):
@@ -40,8 +45,7 @@ func _ready() -> void:
 	_ns.initialization_completed.connect(_on_initialized)
 	_ns.notification_opened.connect(func(d: NotificationData):
 		var cd := d.get_custom_data()
-		Analytics.log_event("notif_open", {"kind": cd.get_string_property("kind") if cd else "",
-			"rule": cd.get_string_property("rule") if cd else ""}))
+		_log_open(cd.get_string_property("kind") if cd else "", cd.get_string_property("rule") if cd else "", "warm"))
 	_ns.post_notifications_permission_granted.connect(func(_p):
 		Analytics.log_event("notif_permission", {"result": "granted"})
 		refresh())
@@ -56,7 +60,22 @@ func _on_initialized() -> void:
 		.set_name(tr("Rewards & races"))
 		.set_description(tr("Daily gift and Panda Race reminders"))
 		.set_importance(NotificationChannel.Importance.DEFAULT))
+	var id := _ns.get_notification_id()                  # soğuk açılış: bu bildirimle mi açıldı
+	if id == REMIND_ID or id == REMIND_ID + 1:
+		var cfg := ConfigFile.new()
+		cfg.load(SAVE_PATH)
+		_log_open(str(cfg.get_value("last", "kind", "")), str(cfg.get_value("last", "rule", "")), "cold")
 	refresh()
+
+func _log_open(kind: String, rule: String, launch: String) -> void:
+	if _open_logged:
+		return
+	_open_logged = true
+	Analytics.log_event("notif_open", {"kind": kind, "rule": rule, "launch": launch})
+
+# İstem kartı ekrana geldi (cevaptan bağımsız: kartı görüp uygulamayı kapatanlar da sayılsın).
+func prompt_shown(where: String) -> void:
+	Analytics.log_event("notif_prompt_shown", {"where": where})
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED:
@@ -76,6 +95,11 @@ func refresh() -> void:
 	var cd := CustomData.new()
 	cd.set_string_property("kind", p["kind"])
 	cd.set_string_property("rule", p.get("rule", "fixed"))
+	var last := ConfigFile.new()                         # soğuk açılışta okunur
+	last.load(SAVE_PATH)
+	last.set_value("last", "kind", p["kind"])
+	last.set_value("last", "rule", p.get("rule", "fixed"))
+	last.save(SAVE_PATH)
 	if OS.is_debug_build():           # telefonda hızlı deneme: 30 sn sonra gelen örnek (release'de yok)
 		_ns.schedule(NotificationData.new().set_id(REMIND_ID + 1).set_channel_id(CHANNEL_ID)
 			.set_title("[debug] " + p["title"]).set_content(p["text"] + " (in %d min)" % (delay / 60))

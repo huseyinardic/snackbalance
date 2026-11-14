@@ -19,6 +19,8 @@ const LIST := [
 	{"id": "crown", "name": "Golden Crown", "slot": "head", "price": 0, "streak": true},
 	# satın alınamaz: Panda Yarışı birinciliği (race.gd)
 	{"id": "medal", "name": "Gold Medal", "slot": "neck", "price": 0, "race": true},
+	# satın alınamaz: Aralık hediyesi (try_grant_seasonal), bir kez alınınca kalıcı
+	{"id": "santa", "name": "Santa Hat", "slot": "head", "price": 0, "seasonal": true},
 ]
 const SLOTS := ["head", "face", "neck", "mouth"]
 
@@ -37,9 +39,27 @@ static func is_streak_item(a: Dictionary) -> bool:
 static func is_race_item(a: Dictionary) -> bool:
 	return a.get("race", false)
 
+static func is_seasonal(a: Dictionary) -> bool:
+	return a.get("seasonal", false)
+
 # Satılmayan, ödülle kazanılan parça.
 static func is_reward_item(a: Dictionary) -> bool:
-	return is_streak_item(a) or is_race_item(a)
+	return is_streak_item(a) or is_race_item(a) or is_seasonal(a)
+
+static var force_december := false     # test/çekim betikleri için
+
+static func is_december() -> bool:
+	return force_december or int(Time.get_datetime_dict_from_system()["month"]) == 12
+
+# Aralık'ta kazanılan bir seviyeden sonra Noel Baba şapkası (bir kez). Döner: bu çağrıda verildi mi
+# (kazanma kartında duyurulur). Bir kez alınınca Aralık'tan sonra da kalır.
+static func try_grant_seasonal() -> bool:
+	if not is_december() or "santa" in GameData.owned:
+		return false
+	GameData.owned.append("santa")
+	GameData.save()
+	Analytics.log_event("seasonal_item", {"item": "santa", "level": GameData.level})
+	return true
 
 # Henüz alınmamış en ucuz parça (kazanma kartındaki "sıradaki hedef"); yoksa {}.
 static func next_goal(owned: Array) -> Dictionary:
@@ -63,6 +83,7 @@ static func draw(ci: CanvasItem, id: String, arms_up: bool = false) -> void:
 		"chef": _chef(ci)
 		"crown": _crown(ci)
 		"medal": _medal(ci)
+		"santa": _santa(ci)
 
 # --- yardımcılar ---
 
@@ -239,6 +260,20 @@ static func _crown(ci: CanvasItem) -> void:
 	ci.draw_circle(xf * Vector2(-10, -3.5), 2.6, Color(0.3, 0.6, 1.0))
 	ci.draw_circle(xf * Vector2(10, -3.5), 2.6, Color(0.3, 0.6, 1.0))
 	ci.draw_line(xf * Vector2(-14, -11), xf * Vector2(-12, -3), Color(1, 1, 1, 0.6), 2.0, true)
+
+# Noel Baba şapkası (Aralık hediyesi): kırmızı külah, ucu sağa sarkar, beyaz kürk bant ve ponpon.
+static func _santa(ci: CanvasItem) -> void:
+	var red := Color(0.9, 0.2, 0.25)
+	var fur := Color(1.0, 0.98, 0.96)
+	_blob(ci, PackedVector2Array([Vector2(-17, -97), Vector2(-11, -115), Vector2(-2, -127), Vector2(10, -130),
+		Vector2(20, -126), Vector2(27, -117), Vector2(21, -114), Vector2(14, -119), Vector2(8, -117),
+		Vector2(13, -106), Vector2(17, -97)]), red)
+	ci.draw_line(Vector2(-8, -104), Vector2(-3, -120), Color(1, 1, 1, 0.35), 3.0, true)
+	var band := _rrect(Rect2(-21, -103, 42, 13), 6.0)
+	ci.draw_colored_polygon(band, fur)
+	ArtUtil.outline(ci, band, INK, OUT)
+	ci.draw_circle(Vector2(27, -115), 6.5 + OUT, INK)
+	ci.draw_circle(Vector2(27, -115), 6.5, fur)
 
 # Altın madalya (yarış birinciliği): boyundan inen mavi-kırmızı kurdele, altın disk,
 # ortada yıldız. Önlük gibi kafanın ve kolların altında çizilir.

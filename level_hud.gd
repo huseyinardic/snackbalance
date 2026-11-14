@@ -766,6 +766,11 @@ func show_win(level: int, rewards: Array, total: int, perfect: bool, goal: Dicti
 	Sfx.play("win")
 	Sfx.play_later(0.75, "reward", -3.0)
 
+# Kazanma kartında hediye duyurusu (Aralık şapkası): tema / yarış satırının yerine geçer.
+func show_gift_line(text: String) -> void:
+	_new_theme.text = text
+	_new_theme.visible = true
+
 # Kazanma kartında sıradaki bölümün yeniliği (yeni tema / yarış satırı yoksa); "" = yok.
 func set_next_teaser(text: String) -> void:
 	if text == "" or _new_theme.visible:

@@ -108,6 +108,8 @@ class ItemCell extends UiKit.Btn:
 			_tag("Day 7", Color(0.85, 0.55, 0.1), y)
 		elif Accessories.is_race_item(item):
 			_tag("Race 1st", Color(0.55, 0.35, 0.85), y)
+		elif Accessories.is_seasonal(item):
+			_tag("December", Color(0.85, 0.25, 0.3), y)
 		else:
 			var t := str(item["price"])
 			var tw := UiKit.BOLD.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, 28).x
@@ -517,6 +519,9 @@ func _select_item(id: String) -> void:
 	elif Accessories.is_race_item(a):
 		_action.text = "Win a race"
 		_action.enabled = false
+	elif Accessories.is_seasonal(a):
+		_action.text = "Free in December!"
+		_action.enabled = false
 	elif GameData.bamboo >= a["price"]:
 		_action.text = tr("Buy  %d") % a["price"]
 		_action.color = UiKit.GREEN
@@ -687,6 +692,7 @@ func _on_claim() -> void:
 	if reminders:
 		reminders.refresh()            # bugünkü alındı: hatırlatma yarına / yarışa kayar
 		if reminders.should_ask():
+			reminders.prompt_shown("daily")
 			var a := create_tween()
 			a.tween_interval(0.7)
 			a.tween_callback(func():

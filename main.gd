@@ -568,6 +568,7 @@ func _win() -> void:
 	for r in rewards:
 		_reward += r[1]
 	GameData.add_bamboo(_reward)
+	var santa := Accessories.try_grant_seasonal()      # Aralık: Noel Baba şapkası hediye
 	Ads.level_won()
 	Analytics.log_event("level_win", {
 		"level": level,
@@ -587,6 +588,8 @@ func _win() -> void:
 		GameData.bamboo, GameData.sunset_unlocked() and not had_sunset, Ads.rewarded_ready())
 	hud.set_win_streak(GameData.win_streak, true)
 	hud.set_race_result(race, race_opened)
+	if santa:
+		hud.show_gift_line("Free Santa Hat!")
 	hud.set_next_teaser(_next_teaser())
 	panda.celebrate()
 	GameData.vibrate(60)
@@ -750,6 +753,7 @@ func _on_next() -> void:
 		return
 	if level == REMIND_ASK_LEVEL and not _remind_asked and _reminders.should_ask():
 		_remind_asked = true
+		_reminders.prompt_shown("level_win")
 		hud.show_reminder_ask()
 		return
 	var n := level + 1
