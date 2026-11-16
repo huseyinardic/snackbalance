@@ -19,6 +19,8 @@ const PT := {
 	"Not on the panda!": "No panda não!",
 	"Balance it!": "Equilibre!",
 	"Tip: Swap a hard food!": "Dica: troque uma comida difícil!",
+	"Apples roll away!": "Maçãs rolam!",
+	"Tap Swap to change it!": "Toque em Troca para trocá-la!",
 	# oyun ekranı
 	"Keep it balanced!": "Mantenha o equilíbrio!",
 	"PERFECT!": "PERFEITO!",
@@ -168,6 +170,8 @@ const TR := {
 	"Not on the panda!": "Pandaya değil!",
 	"Balance it!": "Dengele!",
 	"Tip: Swap a hard food!": "İpucu: Zor yiyeceği değiştir!",
+	"Apples roll away!": "Elmalar yuvarlanır!",
+	"Tap Swap to change it!": "Değiştirmek için Değiştir'e dokun!",
 	# oyun ekranı
 	"Keep it balanced!": "Dengede tut!",
 	"PERFECT!": "MÜKEMMEL!",
@@ -318,6 +322,8 @@ const ES := {
 	"Not on the panda!": "¡Sobre el panda no!",
 	"Balance it!": "¡Equilíbralo!",
 	"Tip: Swap a hard food!": "Consejo: ¡cambia una comida difícil!",
+	"Apples roll away!": "¡Las manzanas ruedan!",
+	"Tap Swap to change it!": "¡Toca Cambio para cambiarla!",
 	# oyun ekranı
 	"Keep it balanced!": "¡Mantén el equilibrio!",
 	"PERFECT!": "¡PERFECTO!",
@@ -468,6 +474,8 @@ const ID := {
 	"Not on the panda!": "Jangan kena panda!",
 	"Balance it!": "Seimbangkan!",
 	"Tip: Swap a hard food!": "Tips: Tukar makanan yang sulit!",
+	"Apples roll away!": "Apel menggelinding!",
+	"Tap Swap to change it!": "Ketuk Tukar untuk menggantinya!",
 	# oyun ekranı
 	"Keep it balanced!": "Jaga keseimbangan!",
 	"PERFECT!": "SEMPURNA!",
@@ -618,6 +626,8 @@ const DE := {
 	"Not on the panda!": "Nicht auf den Panda!",
 	"Balance it!": "Ausbalancieren!",
 	"Tip: Swap a hard food!": "Tipp: Tausche schwieriges Essen!",
+	"Apples roll away!": "Äpfel rollen weg!",
+	"Tap Swap to change it!": "Tippe auf Tausch zum Wechseln!",
 	# oyun ekranı
 	"Keep it balanced!": "Halte das Gleichgewicht!",
 	"PERFECT!": "PERFEKT!",

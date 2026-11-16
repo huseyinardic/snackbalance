@@ -50,6 +50,8 @@ var claimed_day := ""            # günlük ödülün en son alındığı gün
 var sunset_seen := false         # "yeni tema" kırmızı noktası görüldü mü
 var tutorial_done := false      # ilk seviyedeki sürükle-bırak eli artık gösterilmez
 var panda_tip_done := false     # 2. seviyedeki "Not on the panda!" uyarısı artık gösterilmez
+var apples_seen := 0             # oyuncunun önüne gelen elma sayısı (Swap dersi 2. elmada)
+var swap_taught := false         # Swap bir kez zorla öğretildi (2026-11-16)
 var is_new := true               # kayıt dosyası yoktu: ilk açılış (menü atlanır, direkt 1. seviye)
 var music_on := true
 var sfx_on := true
@@ -72,6 +74,9 @@ func load_data() -> void:
 	# alanın olmadığı eski kayıtlar: 1. seviyeyi geçmiş oyuncu oyunu zaten biliyor
 	tutorial_done = cfg.get_value("progress", "tutorial_done", best_level > 1)
 	panda_tip_done = cfg.get_value("progress", "panda_tip_done", best_level > 2)
+	apples_seen = maxi(0, int(cfg.get_value("progress", "apples_seen", 0)))
+	# alanın olmadığı eski kayıt: elma bölümlerini (8-9) geçmiş oyuncuya ders yeniden gösterilmez
+	swap_taught = cfg.get_value("progress", "swap_taught", best_level >= 10)
 	swaps = maxi(0, int(cfg.get_value("progress", "swaps", SWAP_START)))
 	win_streak = maxi(0, int(cfg.get_value("progress", "win_streak", 0)))
 	race_id = int(cfg.get_value("race", "id", 0))
@@ -101,6 +106,8 @@ func save() -> void:
 	cfg.set_value("progress", "best_level", best_level)
 	cfg.set_value("progress", "tutorial_done", tutorial_done)
 	cfg.set_value("progress", "panda_tip_done", panda_tip_done)
+	cfg.set_value("progress", "apples_seen", apples_seen)
+	cfg.set_value("progress", "swap_taught", swap_taught)
 	cfg.set_value("progress", "swaps", swaps)
 	cfg.set_value("progress", "win_streak", win_streak)
 	cfg.set_value("race", "id", race_id)

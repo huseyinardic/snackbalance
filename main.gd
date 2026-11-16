@@ -126,6 +126,8 @@ var _level_msec := 0             # analitik: seviyenin başladığı an (süre)
 var _tutorial: TutorialHand
 var _tutorial_logged := false    # analitik: tutorial_begin oturumda bir kez
 var _tutorial_idle := 0.0        # yiyecek kaç sn'dir dokunulmadan bekliyor
+var _swap_lesson := false        # Swap dersi açık: oyuncunun önüne 2. kez elma geldi, yalnız Swap'a basılabilir
+var _swap_hand: TutorialHand
 var _panda_tip: PandaTip
 var _panda_tip_on := false       # uyarı şu an görünüyor (panda da endişelenir)
 var _panda_tip_logged := false   # analitik: panda_tip_shown oturumda bir kez
@@ -220,6 +222,8 @@ func _ready() -> void:
 	$UI.add_child(hud)
 	_tutorial = TutorialHand.new()
 	$UI.add_child(_tutorial)
+	_swap_hand = TutorialHand.new()
+	$UI.add_child(_swap_hand)
 	_panda_tip = PandaTip.new()
 	$UI.add_child(_panda_tip)
 	_balance_tip = PandaTip.new()
@@ -319,6 +323,8 @@ func _start_level(n: int, retry: bool = false) -> void:
 
 # Kirişi ve pandayı sıfırla, eski yiyecekleri kaldır (yeni seviye ve menüye dönüş).
 func _reset_field() -> void:
+	if _swap_lesson:
+		_end_swap_lesson(false)
 	_release_beam()
 	panda.reset()
 	current_food = null
@@ -461,7 +467,12 @@ func _process(delta: float) -> void:
 	var deg := rad_to_deg(_beam_angle())
 	_t += delta
 	hud.set_swap(level >= SWAP_UNLOCK_LEVEL and (phase == Phase.PLAYING or phase == Phase.HOLDING),
-		GameData.swaps, _can_swap(), (level == SWAP_UNLOCK_LEVEL or _swap_hint) and not _swap_used)
+		GameData.swaps, _can_swap(), (level == SWAP_UNLOCK_LEVEL or _swap_hint or _swap_lesson) and not _swap_used)
+	if _swap_lesson:
+		if _can_swap():
+			_swap_hand.tap(hud.swap_rect().get_center() + Vector2(6, 24))
+		else:                            # seviye bitti/kaybedildi: ders sonraki elmaya kalır
+			_end_swap_lesson(false)
 
 	if phase == Phase.WON or phase == Phase.LOST:
 		return
@@ -682,6 +693,8 @@ func _try_swap() -> void:
 	_swap_used = true
 	_swap_hint = false
 	GameData.use_swap()
+	if _swap_lesson:
+		_end_swap_lesson(true)
 	Analytics.log_event("swap_used", {"level": level, "food": old.kind, "swaps_left": GameData.swaps})
 	hud.set_icon_kind(f.get_meta("seq"), Food.Kind.SANDWICH)
 	# gövdeyi ölçeklemek fizikte sorun çıkarır; parlayarak belirsin
@@ -689,6 +702,32 @@ func _try_swap() -> void:
 	create_tween().tween_property(f, "modulate", Color.WHITE, 0.35)
 	Sfx.play("swap")
 	GameData.vibrate(30)
+
+# Swap'ı bir kez ZORLA öğret (2026-11-16): oyuncunun önüne ikinci kez elma gelince oyun bekler,
+# ekran kararır, yalnız Swap düğmesi parlak kalır, el ona basar; oyuncu Swap'a basınca elma
+# sandviçe döner ve oyun sürer. Hakkı bitmişse ders için bir Swap hediye.
+func _begin_swap_lesson() -> void:
+	_swap_lesson = true
+	if GameData.swaps <= 0:
+		GameData.add_swaps(1)
+	_holding = false
+	_active_touch_index = -1
+	_tutorial.stop()
+	# ders boyunca fizik durur: kiriş ve yığın olduğu gibi kalır (oyuncu düğmeyi ararken devrilmesin,
+	# "oyun beni haksız yere kaybettirdi" demesin); Swap'tan sonra kaldığı hızla sürer
+	PhysicsServer2D.set_active(false)
+	hud.set_swap_lesson(true)
+	Analytics.log_event("swap_lesson_shown", {"level": level})
+
+func _end_swap_lesson(done: bool) -> void:
+	_swap_lesson = false
+	PhysicsServer2D.set_active(true)
+	_swap_hand.stop()
+	hud.set_swap_lesson(false)
+	if done:
+		GameData.swap_taught = true
+		GameData.save()
+		Analytics.log_event("swap_lesson_done", {"level": level})
 
 # Kazanma kartında sıradaki bölümün yeni yiyeceği ("Next level: new Toast!"): ilk bölümlerde
 # oyuncuların bir kısmı bölümü kazanıp gidiyordu — devam etmek için bir merak yoktu.
@@ -1115,6 +1154,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		if hud.swap_rect().grow(12).has_point(event.position):
 			_try_swap()
 		return
+	if _swap_lesson:
+		return                           # derste yiyecek tutulamaz/bırakılamaz: yalnız Swap
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			# Zaten aktif bir parmak varsa, yeni parmağı tamamen yok say
@@ -1204,6 +1245,11 @@ func _spawn_food() -> void:
 	current_food = f
 	_dropping = false
 	_spawn_wait = SPAWN_DELAY
+	if f.kind == Food.Kind.APPLE:
+		GameData.apples_seen += 1
+		GameData.save()
+		if GameData.apples_seen >= 2 and not GameData.swap_taught and level >= SWAP_UNLOCK_LEVEL and not _swap_used:
+			_begin_swap_lesson()
 	Sfx.play("pop", -9.0, 1.0, 0.06)
 
 # Seviyenin sıradaki yiyeceği; liste bittiyse (bir yiyecek düştüğü ya da

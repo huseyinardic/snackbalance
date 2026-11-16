@@ -17,6 +17,7 @@ var _t := 0.0
 var _from := Vector2.ZERO    # yiyeceğin ekrandaki yeri
 var _to := Vector2.ZERO      # gösterilen bırakma yeri (aynı yükseklik)
 var _kind := 0
+var _tap := false          # dokunma modu: el bir düğmeye basıp kalkar (Swap dersi)
 # Yarı saydam çizimde üst üste binen parçalar koyulaşmasın diye el ve yiyecek
 # kopyası CanvasGroup içinde: grup önce tek resim olur, sonra saydamlaşır.
 var _ghost_group := CanvasGroup.new()
@@ -46,8 +47,17 @@ func play(from: Vector2, to: Vector2, kind: int, food_scale: float) -> void:
 		_active = true
 		_t = 0.0
 
+# Dokunma modu: parmak ucu `at`ta, el basar-kalkar (düğmeyi gösterir). Her kare çağrılabilir.
+func tap(at: Vector2) -> void:
+	_from = at
+	if not _active or not _tap:
+		_active = true
+		_tap = true
+		_t = 0.0
+
 func stop() -> void:
 	_active = false
+	_tap = false
 	visible = false
 
 func _process(delta: float) -> void:
@@ -60,6 +70,13 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 func _animate() -> void:
+	if _tap:
+		var k := 0.5 + 0.5 * sin(_t * TAU / 0.9)
+		_hand_group.self_modulate.a = 1.0
+		_hand.position = _from + Vector2(6, 6) * k
+		_hand.scale = Vector2.ONE * (1.0 - 0.06 * (1.0 - k))
+		_ghost_group.self_modulate.a = 0.0
+		return
 	var p := _t
 	var hand_a := 1.0
 	var hand_s := 1.0
@@ -93,7 +110,7 @@ func _animate() -> void:
 
 # sürükleme izi: başlangıçtan parmağa kadar soluk noktalar
 func _draw() -> void:
-	if _t < 0.3 or _t >= 1.75:
+	if _tap or _t < 0.3 or _t >= 1.75:
 		return
 	var x := _hand.position.x
 	var y := _from.y + FINGER_BELOW

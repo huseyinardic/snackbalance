@@ -34,6 +34,8 @@ var _hold_shown := -1
 var _intro_tween: Tween
 var _swap: SwapButton
 var _swap_pulse: Tween
+var _lesson_dim: ColorRect        # Swap dersi: her şey kararır, yalnız Swap düğmesi parlak
+var _lesson_label: Label
 var _lives: LivesView
 var _fly_heart: FlyingHeart
 var _fly_tween: Tween
@@ -944,6 +946,36 @@ func lose_life(lives_left: int, from: Vector2) -> void:
 		Sfx.play("heart_break", -3.0)
 		_lives.shake()
 		_lives.queue_redraw())
+
+# Swap dersi açık/kapalı. Karartma Swap düğmesinin hemen altında (düğme parlak kalır).
+func set_swap_lesson(on: bool) -> void:
+	if on and _lesson_dim == null:
+		_lesson_dim = ColorRect.new()
+		_lesson_dim.color = Color(0.05, 0.07, 0.14, 0.55)
+		_lesson_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_lesson_dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		add_child(_lesson_dim)
+		_lesson_label = Label.new()
+		_lesson_label.text = tr("Apples roll away!") + "\n" + tr("Tap Swap to change it!")
+		_lesson_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_lesson_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_lesson_label.add_theme_font_override("font", _bold)
+		_lesson_label.add_theme_font_size_override("font_size", 46)
+		_lesson_label.add_theme_color_override("font_color", Color(1.0, 0.86, 0.35))
+		_lesson_label.add_theme_color_override("font_outline_color", Color(0.17, 0.14, 0.16))
+		_lesson_label.add_theme_constant_override("outline_size", 12)
+		_lesson_label.anchor_left = 0.0                 # elmanın altı, kirişin üstü (pandayı kapatmaz)
+		_lesson_label.anchor_right = 1.0
+		_lesson_label.anchor_top = 0.29
+		_lesson_label.anchor_bottom = 0.45
+		_lesson_label.offset_left = 40.0
+		_lesson_label.offset_right = -40.0
+		_lesson_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_lesson_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_lesson_dim.add_child(_lesson_label)
+	if _lesson_dim:
+		_lesson_dim.visible = on
+		move_child(_lesson_dim, _swap.get_index())
 
 func swap_rect() -> Rect2:
 	return _swap.get_global_rect() if _swap.visible else Rect2()
