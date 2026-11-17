@@ -25,9 +25,19 @@ const HAND_MADE := [
 	{"foods": [S, W, P, A, C, T, C, P, S], "hint": ""},            # 2 karpuz + 2 pizza: geçen başına 19 deneme
 ]
 
+# Üretilen dizinin duvar çıkardığı seviyelere elle yazılmış dizi. 12: üretilen dizi
+# (S C A T W A T C T) kiriş boşken 3. sırada elma ve karpuzun hemen ardından ikinci elma veriyordu:
+# oyuncuların %54'ü geçebildi, geçen başına 16,7 kayıp (bir sonraki "orta" seviye için çok sert).
+# Aynı uzunluk ve karpuz, tek elma ve o da kiriş dolunca (2026-11-17).
+const OVERRIDE := {
+	12: [S, C, T, A, S, C, W, T, C],
+}
+
 # Seviye için: sıralı yiyecek listesi, ipucu metni ve (yiyecek kirişten düşerse
 # yerine gelecek) yedek havuzu. level 1'den başlar.
 static func get_level(level: int) -> Dictionary:
+	if OVERRIDE.has(level):
+		return {"foods": OVERRIDE[level], "hint": "", "pool": [S, C, T, P, W, A]}
 	if level <= HAND_MADE.size():
 		var d: Dictionary = HAND_MADE[level - 1]
 		var pool: Array = []
