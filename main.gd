@@ -28,6 +28,12 @@ const BEAM_ASSIST_MAX_DEG := 15.0   # yay bu eğimden sonra güçlenmez: büyük
 # ve 12 en büyük duvardı (geçen %53, geçene kadar 11,8 kayıp; 31 Ekim–9 Kasım yeni oyuncular)
 const BEAM_ASSIST_BY_LEVEL := [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.8, 0.7, 0.6, 0.5, 0.45, 0.4,
 	0.35, 0.3, 0.25, 0.2, 0.15, 0.1, 0.05]
+# Kayıp sonrası destek (2026-11-19, Cozy'den): aynı seviyede üst üste her kayıpta tahta yayı biraz
+# güçlenir (+LOSS_ASSIST_STEP), 5. kayıpta en çok; seviye kazanılınca ya da değişince sıfırlanır.
+# 20'den sonraki seviyelerde de çalışır (orada normal yardım yok). Kaybetme açısına dokunulmaz.
+# L12 dışındaki ağır seviyeler: L10 9,1, L13 12,9 kayıp / galibiyet (1–19 Kasım).
+const LOSS_ASSIST_STEP := 0.12
+const LOSS_ASSIST_MAX := 5
 const HOLD_SECONDS := 3.0        # son yiyecekten sonra dengede tutma süresi
 const HOVER_Y := 340.0           # yiyeceğin bekleme yüksekliği (HOVER_DROP); en yüksek yığın bile ~730'u geçmiyor
 const DROP_START_SPEED := 300.0  # bırakınca ilk düşüş hızı (px/sn)
@@ -68,10 +74,11 @@ const REVIEW_MIN_LEVEL := 8      # değerlendirme penceresi en erken bu seviyeni
 # dönüyor, L4–7'de kalanların %3–12'si (L5'i ise yeni oyuncuların ~üçte biri ilk gün bitiriyor)
 const GOAL_LEVELS := [5, 8]
 const REMIND_ASK_LEVEL := 2      # bu seviye kazanılınca "Next"ten önce bildirim izni sorulur (hediye
-                                 # paneline yeni oyuncu pek uğramıyordu: izin sorulan %5'ti). 3'teydi:
-                                 # %82 evet ama oyuncuların yarısı 3'e gelmeden gidiyordu
+								 # paneline yeni oyuncu pek uğramıyordu: izin sorulan %5'ti). 3'teydi:
+								 # %82 evet ama oyuncuların yarısı 3'e gelmeden gidiyordu
 # Kazanma kartındaki "sıradaki yenilik" satırı için yiyecek adları (çevrilir)
-const FOOD_NAMES := {Levels.C: "Cheese", Levels.T: "Toast", Levels.P: "Pizza", Levels.W: "Watermelon", Levels.A: "Apple"}
+const FOOD_NAMES := {Levels.C: "Cheese", Levels.T: "Toast", Levels.P: "Pizza", Levels.W: "Watermelon", Levels.A: "Apple",
+	Levels.K: "Cookie", Levels.PU: "Pumpkin", Levels.CK: "Cake"}
 const CONTINUE_MAX_DEG := 18.0   # geri sarınca kiriş en çok bu eğimde, oyuncu yiyeceği koyana dek sabit
 const MENU_ZOOM := 2.0           # menüde kamera pandaya bu kadar yaklaşır
 const CAMERA_SECONDS := 0.6      # menü <-> oyun kamera geçişi
@@ -135,6 +142,8 @@ var _soft_tip_t := 0.0           # 1. seviye: pandaya düşen yiyecekten sonra u
 var _continue_used := false      # bu denemede Continue kullanıldı mı (deneme başına 1)
 var _offer_free := false         # kartta gösterilen Continue reklamsız mı (_lose_offer)
 var _lose_cause := ""            # "tilt" | "panda"
+var _fail_streak := 0            # bu seviyede üst üste kayıp (tahta desteği, en çok LOSS_ASSIST_MAX)
+var _fail_level := 0
 var _streak_lost := 0            # bu kayıpla sıfırlanan galibiyet serisi (Continue geri verir)
 var _golden := {}                # Panda Yarışı: altın bambulu yiyeceklerin sıra no'ları (seq -> true)
 var _race_pop := {}              # "Next"e basınca açılacak yarış kartı (level_hud.show_race); {} = yok
@@ -289,7 +298,7 @@ func _start_level(n: int, retry: bool = false) -> void:
 	GameData.set_level(level)
 	_level_data = Levels.get_level(level)
 	_level_msec = Time.get_ticks_msec()
-	Analytics.log_event("level_start", {"level": level, "retry": 1 if retry else 0})
+	Analytics.log_event("level_start", {"level": level, "retry": 1 if retry else 0, "assist": _fail_streak})
 	_rng.seed = level * 104729   # kirişten düşen yiyeceğin yedeği de her denemede aynı gelsin
 	Race.ensure_started()
 	_golden = {}
@@ -307,6 +316,9 @@ func _start_level(n: int, retry: bool = false) -> void:
 	_snap = {}
 	if not retry:
 		_swap_hint = false
+	if level != _fail_level:              # başka seviye: kayıp desteği sıfırdan
+		_fail_level = level
+		_fail_streak = 0
 	_swap_pressing = false
 	hud.set_play_visible(true)
 	_reset_field()
@@ -591,7 +603,9 @@ func _win() -> void:
 		"reward": _reward,
 		"win_streak": GameData.win_streak,
 		"race_points": race.get("points", 0),
+		"assist": _fail_streak,
 	})
+	_fail_streak = 0
 	if first_clear and level in GOAL_LEVELS:
 		Analytics.log_event("level_%d_complete" % level)
 	beam_visual.modulate = Color.WHITE
@@ -601,6 +615,8 @@ func _win() -> void:
 	hud.set_race_result(race, race_opened)
 	if santa:
 		hud.show_gift_line("Free Santa Hat!")
+	if GameData.count_win() == GameData.PROMISE_WINS:   # günün 3. galibiyeti: yarın için somut sebep
+		hud.set_next_teaser(GameData.promise_text())
 	hud.set_next_teaser(_next_teaser())
 	panda.celebrate()
 	GameData.vibrate(60)
@@ -641,7 +657,10 @@ func _lose(reason: String, cause: String) -> void:
 		"target": _target(),
 		"swap_used": 1 if _swap_used else 0,
 		"win_streak": _streak_lost,
+		"assist": _fail_streak,
 	})
+	if level == _fail_level:
+		_fail_streak = mini(_fail_streak + 1, LOSS_ASSIST_MAX)
 	if current_food and current_food.freeze:
 		current_food.queue_free()
 	current_food = null
@@ -1088,11 +1107,12 @@ func _physics_process(delta: float) -> void:
 			_on_touchdown(f)
 
 func _assist_beam() -> void:
-	if level > BEAM_ASSIST_BY_LEVEL.size() or beam.freeze \
-			or (phase != Phase.PLAYING and phase != Phase.HOLDING):
+	var k: float = BEAM_ASSIST_BY_LEVEL[level - 1] if level <= BEAM_ASSIST_BY_LEVEL.size() else 0.0
+	k += LOSS_ASSIST_STEP * _fail_streak
+	if k <= 0.0 or beam.freeze or (phase != Phase.PLAYING and phase != Phase.HOLDING):
 		return
 	var cap := deg_to_rad(BEAM_ASSIST_MAX_DEG)
-	beam.apply_torque(-clampf(_beam_angle(), -cap, cap) * BEAM_ASSIST * BEAM_ASSIST_BY_LEVEL[level - 1])
+	beam.apply_torque(-clampf(_beam_angle(), -cap, cap) * BEAM_ASSIST * k)
 
 func _lane_x(screen_x: float) -> float:
 	return clampf(screen_x, pivot.position.x - MAX_LANE_OFFSET, pivot.position.x + MAX_LANE_OFFSET)

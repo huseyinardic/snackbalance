@@ -11,6 +11,19 @@ const T := Food.Kind.TOAST
 const P := Food.Kind.PIZZA
 const W := Food.Kind.WATERMELON
 const A := Food.Kind.APPLE
+const K := Food.Kind.COOKIE
+const PU := Food.Kind.PUMPKIN
+const CK := Food.Kind.CAKE
+
+# Üretilen seviyelerde yeni yiyecekler (2026-11-19): 4'lü döngünün NEFES seviyelerinde tanıtılır
+# (zirve 14 / 22 / 34 geçildikten hemen sonra, ödül gibi). Kurabiye ve pasta kolay havuza, kabak
+# zor havuza (pizza / elma yanına) girer: zor slot sayısı değişmez, yalnız çeşit artar.
+# Tanıtım seviyesinde yeni yiyecek tam 2 kez gelir (kullanıcı: 4 kez fazlaydı), ipucu satırı onu söyler.
+const INTRO := {
+	15: {"kind": K, "hint": "New: Cookie — nice and flat!"},
+	23: {"kind": PU, "hint": "New: Pumpkin — heavy, but sits well!"},
+	35: {"kind": CK, "hint": "New: Cake — easy to stack!"},
+}
 
 const HAND_MADE := [
 	{"foods": [S, S, S, S], "hint": "Drop snacks on both sides!"},
@@ -74,6 +87,11 @@ static func _generated(level: int) -> Dictionary:
 	# karpuz sayısı şansa değil zorluğa bağlı: zor yiyeceklerin ~üçte biri, en fazla 1 -> 3
 	var n_w: int = mini(1 + int(d * 2.5), roundi(n_tough / 3.0))
 	var easy := [S, C, T]
+	if level >= 15:
+		easy.append(K)
+	if level >= 35:
+		easy.append(CK)
+	var tough_kinds := [P, A] + ([PU] if level >= 23 else [])   # havuz (Swap yedeği)
 
 	# zor yiyeceklerin yerleri: ilk ikisi hep kolay (sağlam taban), art arda en fazla 2 zor
 	var tough_at := _place(range(2, count), n_tough, 3, rng)
@@ -92,11 +110,38 @@ static func _generated(level: int) -> Dictionary:
 		elif w_at.has(i):
 			foods.append(W)
 		elif tough_at.has(i):
-			foods.append([P, A][rng.randi() % 2])
+			# kabak zor slotların yalnız ~%25'i: ağır yiyecek sıklaşınca devrilme (kayıpların çoğu) artar
+			if level >= 23 and rng.randf() < 0.25:
+				foods.append(PU)
+			else:
+				foods.append([P, A][rng.randi() % 2])
 		else:
 			foods.append(easy[rng.randi() % easy.size()])
 	var hint := "Hard level!" if is_peak(level) else ""
-	return {"foods": foods, "hint": hint, "pool": easy + [P, W, A]}
+	if INTRO.has(level):                       # tanıtım: yeni yiyecek tam 2 kez, uygun yerlere
+		var nk: int = INTRO[level]["kind"]
+		hint = INTRO[level]["hint"]
+		var heavy := nk == PU
+		var plain := [C, T]                         # havuzdan gelen fazlası eski kolay yiyeceğe döner
+		for i in count:
+			if foods[i] == nk:
+				foods[i] = plain[i % 2] if not heavy else [P, A][i % 2]
+		var pu_left := 1                            # tanıtım nefes seviyesi: kabak en çok 1 (35'te 3 geliyordu)
+		for i in count:
+			if not heavy and foods[i] == PU:
+				if pu_left > 0:
+					pu_left -= 1
+				else:
+					foods[i] = [P, A][i % 2]
+		var slots: Array = []
+		for i in range(1, count):
+			var f: int = foods[i]
+			if (heavy and f in [P, A]) or (not heavy and f in [S, C, T, K]):
+				slots.append(i)
+		var want := 2                              # tanıtımda tam 2 kez (4 kez fazla geliyordu)
+		for j in mini(want, slots.size()):
+			foods[slots[(j * slots.size()) / want]] = nk
+	return {"foods": foods, "hint": hint, "pool": easy + tough_kinds + [W]}
 
 # slots içinden n yer seçer; hiçbir yerde `run` tane seçili art arda gelmez.
 # Karışık sırayla açgözlü dener, en çok yer doldurabilen denemeyi tutar.
@@ -134,6 +179,8 @@ static func _longest_run(picked: Dictionary, s: int) -> int:
 
 # Bu seviyede ilk kez gelen yiyecek (giriş kartında gösterilir); yoksa -1.
 static func new_kind(level: int) -> int:
+	if INTRO.has(level):
+		return INTRO[level]["kind"]
 	if level < 1 or level > HAND_MADE.size():
 		return -1
 	var seen := {}

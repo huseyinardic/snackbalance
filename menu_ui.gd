@@ -610,7 +610,7 @@ func _build_daily() -> Control:
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 10)
 	box.add_child(grid)
-	for d in 7:
+	for d in 8:                                   # iki sıra × 4 gün; pencere ilerler
 		var c := DayCell.new()
 		c.day = d + 1
 		c.custom_minimum_size = Vector2(130, 118)
@@ -646,11 +646,15 @@ func _refresh_daily() -> void:
 	var p := GameData.daily_preview()
 	var today: int = p["day"]
 	var can := GameData.daily_available()
-	_daily_sub.text = tr("Day %d in a row!") % GameData.streak if GameData.streak > 1 else "Come back every day!"
-	for c in _day_cells:
+	_daily_sub.text = tr("Day %d") % GameData.streak if GameData.streak > 1 else "Come back every day!"
+	# görünen 8 gün: bugünün sırası + bir sonraki sıra (1–8, ilk sıra bitince 5–12, sonra 9–16 …)
+	var first := 1 + 4 * ((today - 1) / 4)
+	for i in _day_cells.size():
+		var c = _day_cells[i]
+		c.day = first + i
 		var d: int = c.day
-		c.crown = d == 7 and "crown" not in GameData.owned
-		c.amount = GameData.STREAK_DAY7 if d == 7 else GameData.STREAK_REWARDS[d - 1]
+		c.crown = GameData.crown_day(d)
+		c.amount = GameData.reward_for(d)
 		if d < today:
 			c.state = 1
 		elif d == today:

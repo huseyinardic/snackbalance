@@ -13,7 +13,13 @@ const DAILY_SWAPS := 3           # her gün Swap hakkı bu sayıya tamamlanır (
 # STREAK_DAY7 bambu). 3. ve 7. gün DAILY_SWAPS'ın üstüne +1 Swap.
 const STREAK_REWARDS := [20, 30, 40, 50, 60, 80]
 const STREAK_DAY7 := 100
-const STREAK_BONUS_SWAP_DAYS := [3, 7]
+const STREAK_BONUS_SWAP_DAYS := [3, 7]  # haftanın 3. ve 7. günü (her hafta)
+# 7. günden sonra yol sürer (2026-11-19): 8–14. gün STREAK_WEEK2, 15. günden sonra her gün
+# STREAK_LATE, her 7. gün (14, 21, 28…) STREAK_BIG. Haftalık: 1. hafta 380 (taçla), 2. hafta 650,
+# sonra 680. Aksesuarlar toplam 3.030 bambu: her gün dönen oyuncu ~4–5 haftada hepsini alır.
+const STREAK_WEEK2 := [50, 60, 70, 80, 90, 100]
+const STREAK_LATE := 80
+const STREAK_BIG := 200
 const SUNSET_LEVEL := 14         # bu seviyeyi geçince Sunset teması açılır (ilk "Hard level")
 
 # Seviye ödülleri
@@ -46,7 +52,10 @@ var race_streak := 0             # yarış başladıktan sonra art arda kazanıl
 var _race_streak_lost := 0       # kayıpta sıfırlanan yarış serisi (Continue geri yazar)
 var race_seen := false           # yarış paneli (tanıtım) bir kez açıldı mı
 var last_day := ""               # en son oynanan gün (seri)
-var claimed_day := ""            # günlük ödülün en son alındığı gün
+var claimed_day := ""
+var wins_today := 0               # gün içindeki galibiyet ("yarın" sözü 3.'sünde)
+var wins_date := ""
+const PROMISE_WINS := 3            # günlük ödülün en son alındığı gün
 var sunset_seen := false         # "yeni tema" kırmızı noktası görüldü mü
 var tutorial_done := false      # ilk seviyedeki sürükle-bırak eli artık gösterilmez
 var panda_tip_done := false     # 2. seviyedeki "Not on the panda!" uyarısı artık gösterilmez
@@ -96,6 +105,8 @@ func load_data() -> void:
 	streak = int(cfg.get_value("daily", "streak", 0))
 	last_day = cfg.get_value("daily", "last_day", "")
 	claimed_day = cfg.get_value("daily", "claimed_day", "")
+	wins_today = int(cfg.get_value("daily", "wins_today", 0))
+	wins_date = str(cfg.get_value("daily", "wins_date", ""))
 	music_on = cfg.get_value("settings", "music", true)
 	sfx_on = cfg.get_value("settings", "sfx", true)
 	vibration_on = cfg.get_value("settings", "vibration", true)
@@ -124,6 +135,8 @@ func save() -> void:
 	cfg.set_value("daily", "streak", streak)
 	cfg.set_value("daily", "last_day", last_day)
 	cfg.set_value("daily", "claimed_day", claimed_day)
+	cfg.set_value("daily", "wins_today", wins_today)
+	cfg.set_value("daily", "wins_date", wins_date)
 	cfg.set_value("settings", "music", music_on)
 	cfg.set_value("settings", "sfx", sfx_on)
 	cfg.set_value("settings", "vibration", vibration_on)
@@ -281,13 +294,32 @@ func refresh_day() -> void:
 	var t := today()
 	if last_day == t:
 		return
-	if last_day != "" and _days_between(last_day, t) == 1:
+	# Hedgy gibi cezasız (2026-11-19): gün atlanırsa seri sıfırlanmaz, yol bekler (sıradaki gün)
+	if last_day != "":
 		streak += 1
 	else:
 		streak = 1
 	last_day = t
 	if not is_new:
 		save()
+
+# Gün içinde kazanılan seviye (kazanma kartında "yarın" sözünün zamanı).
+func count_win() -> int:
+	if wins_date != today():
+		wins_date = today()
+		wins_today = 0
+	wins_today += 1
+	save()
+	return wins_today
+
+# Kazanma kartındaki söz: bugünkü hediye alınmadıysa "bekliyor", alındıysa yarınki.
+func promise_text() -> String:
+	if daily_available():
+		return "Your daily gift is waiting 🎁"
+	var day := streak + 1
+	if crown_day(day):
+		return "Tomorrow: the Golden Crown! 👑"
+	return tr("Tomorrow: +%d bamboo 🎋") % reward_for(day)
 
 func daily_available() -> bool:
 	return claimed_day != today()
@@ -296,17 +328,28 @@ func daily_available() -> bool:
 func streak_day() -> int:
 	return (maxi(streak, 1) - 1) % 7 + 1
 
+# Hediye yolunun d. gününün bambusu (1'den başlar, sonsuz).
+static func reward_for(d: int) -> int:
+	if d <= STREAK_REWARDS.size():
+		return STREAK_REWARDS[d - 1]
+	if d == 7:
+		return STREAK_DAY7
+	if d <= 7 + STREAK_WEEK2.size():
+		return STREAK_WEEK2[d - 8]
+	return STREAK_BIG if d % 7 == 0 else STREAK_LATE
+
+# Taç: ilk 7. gün (ya da taç hâlâ yoksa sonraki her 7. gün).
+func crown_day(d: int) -> bool:
+	return d % 7 == 0 and "crown" not in owned
+
 func daily_preview() -> Dictionary:
-	var day := streak_day()
+	var day := maxi(streak, 1)                    # yolun günü (7'de bitmez)
 	var r := {"day": day, "bamboo": 0, "crown": false, "extra_swaps": 0}
-	if day == 7:
-		if "crown" in owned:
-			r["bamboo"] = STREAK_DAY7
-		else:
-			r["crown"] = true
+	if crown_day(day):
+		r["crown"] = true
 	else:
-		r["bamboo"] = STREAK_REWARDS[day - 1]
-	if day in STREAK_BONUS_SWAP_DAYS:
+		r["bamboo"] = reward_for(day)
+	if (day - 1) % 7 + 1 in STREAK_BONUS_SWAP_DAYS:
 		r["extra_swaps"] = 1
 	r["refill"] = maxi(0, DAILY_SWAPS - swaps)   # bugün tamamlanacak Swap sayısı
 	return r

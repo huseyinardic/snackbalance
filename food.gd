@@ -5,7 +5,9 @@ extends RigidBody2D
 # düz olanlar rahat istiflenir, yuvarlaklar gerçekten yuvarlanır. Zorluk,
 # hangi yiyeceğin ne sıklıkla geldiğinden doğar (main.gd -> _pick_kind).
 
-enum Kind { SANDWICH, CHEESE, TOAST, PIZZA, WATERMELON, APPLE }
+# 2026-11-19: elmadan (8) sonra yenilik yoktu → kurabiye (15, kolay), kabak (23, ağır ama oturaklı),
+# pasta (35, kolay). Sona eklendi: eski tür numaraları değişmez.
+enum Kind { SANDWICH, CHEESE, TOAST, PIZZA, WATERMELON, APPLE, COOKIE, PUMPKIN, CAKE }
 
 const DATA := {
 	Kind.SANDWICH:   {"mass": 1.0, "friction": 0.9},
@@ -14,6 +16,9 @@ const DATA := {
 	Kind.PIZZA:      {"mass": 0.7, "friction": 0.8},
 	Kind.WATERMELON: {"mass": 1.8, "friction": 0.8},   # en ağır, düz tabanlı yarım
 	Kind.APPLE:      {"mass": 0.45, "friction": 0.5},  # yuvarlanır
+	Kind.COOKIE:     {"mass": 0.5, "friction": 0.95},  # geniş, ince, çok tutucu: nereye konsa durur
+	Kind.PUMPKIN:    {"mass": 1.2, "friction": 0.85},  # ağır (karpuz 1,8, sandviç 1,0), altı düz: iyi oturur
+	Kind.CAKE:       {"mass": 0.9, "friction": 0.9},   # altı üstü düz, katlı: üstüne rahat konur
 }
 const APPLE_RADIUS := 16.0
 const OUTLINE := Color(0.30, 0.19, 0.12)
@@ -78,6 +83,21 @@ static func _polygon_for(k: int) -> PackedVector2Array:
 				Vector2(10, -27), Vector2(-10, -27), Vector2(-22, -24), Vector2(-28, -12)])
 		Kind.PIZZA:      # ucu yukarıda dilim, tabanı düz — üstüne koymak zor
 			return PackedVector2Array([Vector2(-32, 20), Vector2(32, 20), Vector2(0, -30)])
+		Kind.COOKIE:     # geniş, ince yuvarlak bisküvi (yandan), 64x18
+			return PackedVector2Array([
+				Vector2(-32, -5), Vector2(-29, -9), Vector2(29, -9), Vector2(32, -5),
+				Vector2(32, 5), Vector2(29, 9), Vector2(-29, 9), Vector2(-32, 5)])
+		Kind.PUMPKIN:    # basık yuvarlak kabak, altı düz (oturur), 64x42
+			var pk := PackedVector2Array()
+			for i in 13:                                  # üst yarım: sağdan sola yay
+				var a := PI * float(i) / 12.0
+				pk.append(Vector2(32.0 * cos(a), -1.0 - 21.0 * sin(a)))
+			pk.append_array(PackedVector2Array([Vector2(-29, 12), Vector2(-20, 20), Vector2(20, 20), Vector2(29, 12)]))
+			return pk
+		Kind.CAKE:       # katlı pasta dilimi (yandan), 56x36
+			return PackedVector2Array([
+				Vector2(-28, -15), Vector2(-25, -18), Vector2(25, -18), Vector2(28, -15),
+				Vector2(28, 18), Vector2(-28, 18)])
 		Kind.WATERMELON: # kesik yüzü altta yarım karpuz (kubbe), 68x34
 			var pts := PackedVector2Array()
 			for i in 11:
@@ -143,6 +163,61 @@ static func paint(ci: CanvasItem, k: int) -> void:
 			ci.draw_rect(Rect2(-33, 13, 66, 4), Color(0.95, 0.33, 0.36))      # kesik kırmızı yüz
 			for sx in [-18.0, -6.0, 6.0, 18.0]:
 				ci.draw_rect(Rect2(sx - 1, 14, 2, 2), Color(0.2, 0.12, 0.1))  # çekirdek
+		Kind.COOKIE:
+			ci.draw_colored_polygon(pts, Color(0.86, 0.60, 0.32))
+			ci.draw_rect(Rect2(-30, -8, 60, 6), Color(0.94, 0.72, 0.42))          # üst yüz
+			ci.draw_rect(Rect2(-26, -7.5, 34, 2), Color(1, 1, 1, 0.45))           # ışık
+			for ch in [Vector2(-19, -4), Vector2(-6, 1), Vector2(8, -3), Vector2(20, 2), Vector2(-14, 4)]:
+				ci.draw_circle(ch, 2.6, Color(0.36, 0.20, 0.12))                      # çikolata parçası
+			ci.draw_rect(Rect2(-30, 5, 60, 3), Color(0.72, 0.47, 0.22))           # alt gölge
+		Kind.PUMPKIN:
+			# beş şişkin dilim: görünen siluet dilimlerin birleşimi (üstü ve yanları dilim dilim kabarık),
+			# altı düz kesik; çarpışma şekli dışbükey gövde (pts). Dilim araları koyu oluk, üstte çukur + sap.
+			var lobes: Array = []
+			for lb in [[-21.0, 10.5, 17.5], [21.0, 10.5, 17.5], [-11.0, 12.0, 20.0], [11.0, 12.0, 20.0], [0.0, 12.5, 21.0]]:
+				var lobe := PackedVector2Array()
+				for i in 28:
+					var a := TAU * float(i) / 28.0
+					lobe.append(Vector2(lb[0] + lb[1] * cos(a), 0.8 + lb[2] * sin(a)))
+				var cut := Geometry2D.intersect_polygons(lobe, PackedVector2Array([Vector2(-40, -40), Vector2(40, -40), Vector2(40, 20), Vector2(-40, 20)]))
+				if not cut.is_empty():
+					lobes.append(cut[0])
+			var body: PackedVector2Array = lobes[4]             # birleşim ortadan dışa (her dilim öncekine değer)
+			for lb in [lobes[2], lobes[3], lobes[0], lobes[1]]:
+				var m := Geometry2D.merge_polygons(body, lb)
+				if not m.is_empty():
+					body = m[0]
+			ci.draw_colored_polygon(body, Color(0.84, 0.40, 0.09))
+			for lb in lobes:
+				ci.draw_colored_polygon(lb, Color(0.97, 0.57, 0.17))
+				var edge := PackedVector2Array(lb)
+				edge.append(lb[0])
+				ci.draw_polyline(edge, Color(0.80, 0.36, 0.07), 1.6, true)
+			for hl in [Vector2(-2, -7), Vector2(12, -5), Vector2(-14, -4)]:            # parlaklık
+				ci.draw_arc(hl, 6.5, PI * 1.05, PI * 1.5, 6, Color(1.0, 0.82, 0.55, 0.65), 2.4, true)
+			for part in Geometry2D.intersect_polygons(PackedVector2Array([Vector2(-34, 15), Vector2(34, 15), Vector2(34, 22), Vector2(-34, 22)]), body):
+				ci.draw_colored_polygon(part, Color(0.78, 0.35, 0.07, 0.55))             # alt gölge
+			ci.draw_colored_polygon(PackedVector2Array([Vector2(-6, -19), Vector2(0, -21.5), Vector2(6, -19), Vector2(0, -17.5)]), Color(0.70, 0.30, 0.06))  # çukur
+			var bo := PackedVector2Array(body)
+			bo.append(body[0])
+			ci.draw_polyline(bo, OUTLINE, 2.5, true)
+			var stem := PackedVector2Array([Vector2(-3.5, -18.5), Vector2(3, -18.5), Vector2(4, -24), Vector2(8.5, -29),
+				Vector2(5.5, -32), Vector2(0.5, -27), Vector2(-2.5, -23)])
+			ci.draw_colored_polygon(stem, Color(0.56, 0.78, 0.58))
+			ci.draw_line(Vector2(0.5, -20), Vector2(4.5, -28), Color(0.42, 0.64, 0.46), 1.6, true)
+			var so := PackedVector2Array(stem)
+			so.append(stem[0])
+			ci.draw_polyline(so, OUTLINE, 2.2, true)
+			return                                         # kendi dış çizgisi var (gövde değil siluet)
+		Kind.CAKE:
+			ci.draw_colored_polygon(pts, Color(0.98, 0.86, 0.60))                # pandispanya
+			ci.draw_rect(Rect2(-28, -2, 56, 4), Color(1.0, 0.98, 0.94))           # krema
+			ci.draw_rect(Rect2(-28, 2, 56, 3), Color(0.90, 0.30, 0.40))           # reçel
+			ci.draw_colored_polygon(PackedVector2Array([Vector2(-28, -15), Vector2(-25, -18), Vector2(25, -18), Vector2(28, -15), Vector2(28, -9), Vector2(-28, -9)]), Color(0.98, 0.62, 0.72))
+			ci.draw_rect(Rect2(-24, -17, 30, 2.2), Color(1, 1, 1, 0.5))           # ışık
+			for sp in [[Vector2(-18, -13), Color(0.4, 0.7, 1.0)], [Vector2(-6, -12), Color(1.0, 0.9, 0.3)], [Vector2(7, -14), Color(0.5, 0.85, 0.45)], [Vector2(18, -12), Color(1, 1, 1)]]:
+				ci.draw_rect(Rect2(sp[0] - Vector2(2.5, 1), Vector2(5, 2)), sp[1])    # şeker serpme
+			ci.draw_rect(Rect2(-28, 14, 56, 4), Color(0.86, 0.68, 0.40))          # alt gölge
 		Kind.APPLE:
 			var r := APPLE_RADIUS
 			ci.draw_circle(Vector2.ZERO, r, Color(0.90, 0.24, 0.22))

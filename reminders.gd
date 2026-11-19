@@ -143,16 +143,16 @@ func _plan_daily() -> Dictionary:
 			"text": tr("Claim +%d bamboo before the day ends!") % r["bamboo"] if not r["crown"]
 				else tr("The Golden Crown is waiting for your panda! 👑")}
 	# yarın: seri bugün oynandıysa bir artar
-	var s: int = GameData.streak + 1 if GameData.last_day == GameData.today() else 1
-	var day: int = (s - 1) % 7 + 1
+	var s: int = GameData.streak + 1                    # cezasız seri: yarın hep bir sonraki gün
+	var day: int = s
 	var at := _daytime_clamp(t + HABIT_SECONDS)
-	if day == 7 and "crown" not in GameData.owned:
+	if GameData.crown_day(day):
 		return {"kind": "daily", "rule": "habit", "at": at, "title": tr("Day 7: the Golden Crown is waiting! 👑"),
 			"text": tr("Come back and dress up your panda.")}
-	var bamboo: int = GameData.STREAK_DAY7 if day == 7 else GameData.STREAK_REWARDS[day - 1]
+	var bamboo: int = GameData.reward_for(day)
 	if s >= 3:
-		return {"kind": "daily", "rule": "habit", "at": at, "title": tr("Don't lose your %d-day streak! 🔥") % (s - 1),
-			"text": tr("Day %d gift: +%d bamboo 🎋") % [s, bamboo]}
+		return {"kind": "daily", "rule": "habit", "at": at, "title": tr("Your daily gift is ready 🎁"),
+			"text": tr("Day %d gift: +%d bamboo 🎋") % [day, bamboo]}
 	var race := _race_daily(at)
 	if not race.is_empty():
 		return race

@@ -7,6 +7,14 @@ class_name I18n
 # Marka ve hayvan adları (Snack Balance, Koala Kiki...) çevrilmez.
 
 const PT := {
+	"Cookie": "Biscoito",
+	"Pumpkin": "Abóbora",
+	"Cake": "Bolo",
+	"New: Cookie — nice and flat!": "Novo: Biscoito — bem achatado!",
+	"New: Pumpkin — heavy, but sits well!": "Novo: Abóbora — pesada, mas fica firme!",
+	"New: Cake — easy to stack!": "Novo: Bolo — fácil de empilhar!",
+	"Tomorrow: +%d bamboo 🎋": "Amanhã: +%d bambus 🎋",
+	"Tomorrow: the Golden Crown! 👑": "Amanhã: a Coroa Dourada! 👑",
 	# ipuçları
 	"Drop snacks on both sides!": "Solte lanches dos dois lados!",
 	"Don't drop it on the panda!": "Não deixe cair no panda!",
@@ -158,6 +166,14 @@ const PT := {
 }
 
 const TR := {
+	"Cookie": "Kurabiye",
+	"Pumpkin": "Kabak",
+	"Cake": "Pasta",
+	"New: Cookie — nice and flat!": "Yeni: Kurabiye — dümdüz!",
+	"New: Pumpkin — heavy, but sits well!": "Yeni: Kabak — ağır ama iyi oturur!",
+	"New: Cake — easy to stack!": "Yeni: Pasta — üst üste koyması kolay!",
+	"Tomorrow: +%d bamboo 🎋": "Yarın: +%d bambu 🎋",
+	"Tomorrow: the Golden Crown! 👑": "Yarın: Altın Taç! 👑",
 	# ipuçları
 	"Drop snacks on both sides!": "Yiyecekleri iki tarafa koy!",
 	"Don't drop it on the panda!": "Pandanın üstüne düşürme!",
@@ -310,6 +326,14 @@ const TR := {
 
 # İspanyolca (Latin Amerika, "tú"): bütün "es" yerellerini karşılar.
 const ES := {
+	"Cookie": "Galleta",
+	"Pumpkin": "Calabaza",
+	"Cake": "Pastel",
+	"New: Cookie — nice and flat!": "Nuevo: Galleta — ¡bien plana!",
+	"New: Pumpkin — heavy, but sits well!": "Nuevo: Calabaza — pesada, ¡pero se asienta bien!",
+	"New: Cake — easy to stack!": "Nuevo: Pastel — ¡fácil de apilar!",
+	"Tomorrow: +%d bamboo 🎋": "Mañana: +%d de bambú 🎋",
+	"Tomorrow: the Golden Crown! 👑": "Mañana: ¡la Corona Dorada! 👑",
 	# ipuçları
 	"Drop snacks on both sides!": "¡Suelta snacks a ambos lados!",
 	"Don't drop it on the panda!": "¡No lo sueltes sobre el panda!",
@@ -462,6 +486,14 @@ const ES := {
 
 # Endonezce ("kamu"). Eski Android'ler dili "in" diye bildirir; setup() onu "id"ye çevirir.
 const ID := {
+	"Cookie": "Kue kering",
+	"Pumpkin": "Labu",
+	"Cake": "Kue",
+	"New: Cookie — nice and flat!": "Baru: Kue kering — datar dan stabil!",
+	"New: Pumpkin — heavy, but sits well!": "Baru: Labu — berat, tapi duduk stabil!",
+	"New: Cake — easy to stack!": "Baru: Kue — mudah ditumpuk!",
+	"Tomorrow: +%d bamboo 🎋": "Besok: +%d bambu 🎋",
+	"Tomorrow: the Golden Crown! 👑": "Besok: Mahkota Emas! 👑",
 	# ipuçları
 	"Drop snacks on both sides!": "Jatuhkan camilan di kedua sisi!",
 	"Don't drop it on the panda!": "Jangan jatuhkan ke panda!",
@@ -614,6 +646,14 @@ const ID := {
 
 # Almanca ("du"). Uzun kelimeler: Btn ve GoalBar yazıyı sığmazsa küçültür.
 const DE := {
+	"Cookie": "Keks",
+	"Pumpkin": "Kürbis",
+	"Cake": "Kuchen",
+	"New: Cookie — nice and flat!": "Neu: Keks — schön flach!",
+	"New: Pumpkin — heavy, but sits well!": "Neu: Kürbis — schwer, aber steht gut!",
+	"New: Cake — easy to stack!": "Neu: Kuchen — leicht zu stapeln!",
+	"Tomorrow: +%d bamboo 🎋": "Morgen: +%d Bambus 🎋",
+	"Tomorrow: the Golden Crown! 👑": "Morgen: die Goldene Krone! 👑",
 	# ipuçları
 	"Drop snacks on both sides!": "Snacks auf beide Seiten!",
 	"Don't drop it on the panda!": "Nicht auf den Panda fallen lassen!",
